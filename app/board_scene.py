@@ -337,7 +337,7 @@ class ChessBoardScene(QGraphicsScene):
         cell = self._cells[row][col]
         if cell:
             cx = cell.pos().x() + (sq - piece_size) / 2
-            cy = cell.pos().y() + (sq - piece_size) / 2
+            cy = cell.pos().y() + (sq - piece_size)  # bottom-aligned
             piece.setPos(cx, cy)
 
         self.addItem(piece)
@@ -384,7 +384,7 @@ class ChessBoardScene(QGraphicsScene):
         cell = self._cells[row][col]
         if cell:
             cx = cell.pos().x() + (sq - ps) / 2
-            cy = cell.pos().y() + (sq - ps) / 2
+            cy = cell.pos().y() + (sq - ps)  # bottom-aligned
             piece.setPos(cx, cy)
 
     def _pos_to_square(self, pos):

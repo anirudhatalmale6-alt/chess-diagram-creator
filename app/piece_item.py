@@ -101,7 +101,8 @@ class ChessPieceItem(QGraphicsItem):
                     dw, dh = ts, ts / aspect
                 else:           # taller than wide
                     dw, dh = ts * aspect, ts
-                dest = QRectF((ts - dw) / 2, (ts - dh) / 2, dw, dh)
+                # Bottom-align: pieces sit on the bottom edge of the cell
+                dest = QRectF((ts - dw) / 2, ts - dh, dw, dh)
                 painter.drawImage(dest, img)
             else:
                 painter.drawImage(rect, img)
