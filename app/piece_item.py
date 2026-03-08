@@ -58,6 +58,9 @@ class ChessPieceItem(QGraphicsItem):
             original = QImage(target_size, target_size,
                               QImage.Format.Format_ARGB32)
             original.fill(Qt.GlobalColor.red)
+        # Shift visible content to bottom-center so pieces sit on the
+        # baseline regardless of how the source image was authored.
+        original = cls._align_content_bottom(original)
         # Keep full-resolution original; scale a copy for display
         display = original.scaled(
             target_size, target_size,
@@ -108,6 +111,97 @@ class ChessPieceItem(QGraphicsItem):
                 painter.drawImage(dest, img)
 
     # ---- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def _align_content_bottom(image: QImage) -> QImage:
+        """Shift visible content to bottom-center of the image.
+
+        Detects the actual piece shape bounds via the alpha channel and
+        repositions it so it is centered horizontally and touching the
+        bottom edge.  Uses raw pixel data for speed.  Images that are
+        fully opaque (no alpha) or already aligned are returned as-is.
+        """
+        img = image.convertToFormat(QImage.Format.Format_ARGB32)
+        w, h = img.width(), img.height()
+        if w < 2 or h < 2:
+            return img
+
+        # Access raw pixel data (BGRA on little-endian; alpha at byte +3)
+        try:
+            ptr = img.constBits()
+            ptr.setsize(w * h * 4)
+            data = bytes(ptr)
+        except Exception:
+            return img
+
+        stride = w * 4
+        ALPHA_MIN = 10
+
+        # --- find top (first row with visible pixel) ---
+        top = 0
+        found_top = False
+        for y in range(h):
+            base = y * stride
+            for x in range(w):
+                if data[base + x * 4 + 3] > ALPHA_MIN:
+                    top = y
+                    found_top = True
+                    break
+            if found_top:
+                break
+
+        if not found_top:
+            return img                 # fully transparent image
+
+        # --- find bottom (last row with visible pixel) ---
+        bottom = h - 1
+        for y in range(h - 1, -1, -1):
+            base = y * stride
+            found = False
+            for x in range(w):
+                if data[base + x * 4 + 3] > ALPHA_MIN:
+                    bottom = y
+                    found = True
+                    break
+            if found:
+                break
+
+        # --- find left / right (scan only content rows) ---
+        left = w - 1
+        right = 0
+        for y in range(top, bottom + 1):
+            base = y * stride
+            for x in range(left):
+                if data[base + x * 4 + 3] > ALPHA_MIN:
+                    left = x
+                    break
+            for x in range(w - 1, right, -1):
+                if data[base + x * 4 + 3] > ALPHA_MIN:
+                    right = x
+                    break
+
+        # Check if content is already bottom-aligned and centered
+        bottom_pad = h - 1 - bottom
+        content_cx = (left + right) / 2.0
+        image_cx = (w - 1) / 2.0
+        if bottom_pad <= 1 and abs(content_cx - image_cx) <= 2:
+            return img                 # already properly aligned
+
+        content_w = right - left + 1
+        content_h = bottom - top + 1
+        new_x = (w - content_w) // 2
+        new_y = h - content_h
+
+        new_img = QImage(w, h, QImage.Format.Format_ARGB32)
+        new_img.fill(0)                # fully transparent
+        p = QPainter(new_img)
+        p.drawImage(
+            QRectF(new_x, new_y, content_w, content_h),
+            img,
+            QRectF(left, top, content_w, content_h),
+        )
+        p.end()
+        return new_img
 
     @staticmethod
     def _render_svg_to_image(svg_data: bytes, size: int) -> QImage:
