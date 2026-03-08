@@ -22,6 +22,7 @@ class BoardSettings:
     coord_color: str = DEFAULT_COORD_COLOR
     square_size: int = DEFAULT_SQUARE_SIZE
     piece_scale: float = DEFAULT_PIECE_SCALE
+    coord_distance: int = 4  # distance between coordinates and board edge
     light_texture_path: str = ""
     dark_texture_path: str = ""
 

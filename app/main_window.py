@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
         sp.coordFontChanged.connect(self._on_coord_font)
         sp.coordColorChanged.connect(self._on_coord_color)
         sp.coordPositionChanged.connect(self._on_coord_position)
+        sp.coordDistanceChanged.connect(self._on_coord_distance)
         sp.squareSizeChanged.connect(self._on_square_size)
         sp.pieceScaleChanged.connect(self._on_piece_scale)
         sp.lightTextureRequested.connect(lambda: self._load_texture(True))
@@ -286,6 +287,9 @@ class MainWindow(QMainWindow):
             self.settings.coord_font, self.settings.coord_size,
             self.settings.coord_color, pos
         )
+
+    def _on_coord_distance(self, dist):
+        self.scene.update_coord_distance(dist)
 
     def _on_square_size(self, size):
         self.scene.update_square_size(size)

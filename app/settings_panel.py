@@ -54,6 +54,7 @@ class SettingsPanel(QWidget):
     coordPositionChanged = pyqtSignal(str)
     squareSizeChanged = pyqtSignal(int)
     pieceScaleChanged = pyqtSignal(float)
+    coordDistanceChanged = pyqtSignal(int)
     lightTextureRequested = pyqtSignal()
     darkTextureRequested = pyqtSignal()
     clearTexturesRequested = pyqtSignal()
@@ -137,6 +138,13 @@ class SettingsPanel(QWidget):
         self.coord_pos_combo.setCurrentText(self.settings.coord_position)
         self.coord_pos_combo.currentTextChanged.connect(self.coordPositionChanged.emit)
         coord_layout.addRow("Position:", self.coord_pos_combo)
+
+        self.coord_dist_spin = QSpinBox()
+        self.coord_dist_spin.setRange(0, 40)
+        self.coord_dist_spin.setValue(getattr(self.settings, 'coord_distance', 4))
+        self.coord_dist_spin.setSuffix(" px")
+        self.coord_dist_spin.valueChanged.connect(self.coordDistanceChanged.emit)
+        coord_layout.addRow("Distance:", self.coord_dist_spin)
 
         coord_group.setLayout(coord_layout)
         main_layout.addWidget(coord_group)

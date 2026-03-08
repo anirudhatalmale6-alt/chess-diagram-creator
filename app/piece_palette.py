@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QListWidget, QListWidgetItem,
     QLabel, QPushButton, QAbstractItemView,
 )
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QDrag
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QDrag, QImage
 from PyQt6.QtCore import Qt, QSize, QMimeData, QByteArray, QPoint
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -76,16 +76,24 @@ class PiecePalette(QWidget):
                 with open(path, 'rb') as f:
                     data = f.read()
                 renderer = QSvgRenderer(QByteArray(data))
-                pixmap = QPixmap(48, 48)
-                pixmap.fill(Qt.GlobalColor.transparent)
-                painter = QPainter(pixmap)
+                # Use QImage to avoid DPI-dependent QPixmap sizing
+                image = QImage(48, 48, QImage.Format.Format_ARGB32)
+                image.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(image)
                 renderer.render(painter)
                 painter.end()
-                return QIcon(pixmap)
+                return QIcon(QPixmap.fromImage(image))
             except Exception:
                 return QIcon()
         else:
-            return QIcon(path)
+            # Load via QImage to avoid DPI issues
+            image = QImage(path)
+            if not image.isNull():
+                image = image.scaled(48, 48,
+                                     Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+                return QIcon(QPixmap.fromImage(image))
+            return QIcon()
 
 
 class DragPieceList(QListWidget):

@@ -1,10 +1,9 @@
 """Chess board scene — manages the 8x8 grid, coordinates, and pieces."""
 
 import os
-from PyQt6.QtWidgets import QGraphicsScene, QGraphicsRectItem
-from PyQt6.QtGui import QColor, QPen, QBrush, QPainter, QImage
+from PyQt6.QtWidgets import QGraphicsScene, QGraphicsRectItem, QGraphicsPathItem
+from PyQt6.QtGui import QColor, QPen, QBrush, QPainter, QImage, QPainterPath
 from PyQt6.QtCore import Qt, QRectF, QByteArray, QBuffer, QMimeData
-from PyQt6.QtSvg import QSvgRenderer
 
 from .cell_item import CellItem
 from .coordinate_item import CoordinateItem
@@ -23,39 +22,31 @@ class ChessBoardScene(QGraphicsScene):
         super().__init__()
         self.settings = settings
         self.pieces_dir = pieces_dir
-        self._cells = [[None] * 8 for _ in range(8)]  # row x col
+        self._cells = [[None] * 8 for _ in range(8)]
         self._pieces = {}  # (row, col) -> ChessPieceItem
         self._coord_items = []
         self._border_item = None
-        self._loaded_piece_paths = {}  # piece_type -> path
+        self._loaded_piece_paths = {}
 
         self.setBackgroundBrush(QBrush(QColor(settings.background_color)))
         self._build_board()
         self._load_default_pieces()
 
     def _load_default_pieces(self):
-        """Load default pieces from the pieces directory."""
         if not self.pieces_dir or not os.path.isdir(self.pieces_dir):
             return
         for fname in os.listdir(self.pieces_dir):
             name, ext = os.path.splitext(fname)
             if ext.lower() in ('.svg', '.png') and len(name) == 2:
-                path = os.path.join(self.pieces_dir, fname)
-                self._loaded_piece_paths[name] = path
+                self._loaded_piece_paths[name] = os.path.join(self.pieces_dir, fname)
 
     def get_loaded_pieces(self) -> dict:
-        """Return dict of piece_type -> path for all loaded pieces."""
         return dict(self._loaded_piece_paths)
 
     def load_pieces_from_folder(self, folder: str):
-        """Load piece images from a user-selected folder.
-
-        Supports filenames like: wK.svg, bQ.png, white_king.svg, etc.
-        Also accepts any SVG/PNG file — user can use them as custom pieces.
-        """
+        """Load piece images from a user-selected folder."""
         self._loaded_piece_paths.clear()
 
-        # Common naming patterns to recognize piece types
         name_map = {
             'white_king': 'wK', 'white_queen': 'wQ', 'white_rook': 'wR',
             'white_bishop': 'wB', 'white_knight': 'wN', 'white_pawn': 'wP',
@@ -69,16 +60,14 @@ class ChessBoardScene(QGraphicsScene):
 
         for fname in os.listdir(folder):
             name, ext = os.path.splitext(fname)
-            if ext.lower() in ('.svg', '.png', '.jpg', '.jpeg', '.bmp'):
+            if ext.lower() in ('.svg', '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'):
                 path = os.path.join(folder, fname)
-                # Standard 2-char names: wK, bQ, etc.
                 if len(name) == 2 and name[0] in 'wb' and name[1] in 'KQRBNP':
                     self._loaded_piece_paths[name] = path
-                # Check common naming patterns
                 elif name.lower() in name_map:
                     self._loaded_piece_paths[name_map[name.lower()]] = path
                 else:
-                    # Accept any image file with its filename as key
+                    # Accept any image — use filename as piece key
                     self._loaded_piece_paths[name] = path
         self.pieces_dir = folder
 
@@ -88,27 +77,43 @@ class ChessBoardScene(QGraphicsScene):
 
         s = self.settings
         sq = s.square_size
-        border = s.border_thickness
-        coord_margin = s.coord_size + 8 if s.coord_position == "outside" else 0
+        border_w = s.border_thickness
+        coord_dist = getattr(s, 'coord_distance', 4)
 
-        # Board origin (accounting for coordinates and border)
-        ox = coord_margin + border
-        oy = border
+        # Calculate coordinate space needed
+        coord_space = s.coord_size + coord_dist if s.coord_position == "outside" else 0
 
-        # Create border
+        # Board origin: leave room for rank labels on left and border
+        ox = coord_space + border_w
+        oy = border_w
+
         board_w = sq * 8
         board_h = sq * 8
-        self._border_item = QGraphicsRectItem(
-            ox - border, oy - border,
-            board_w + 2 * border, board_h + 2 * border
-        )
-        pen = QPen(QColor(s.border_color), border)
-        self._border_item.setPen(pen)
-        self._border_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        self._border_item.setZValue(-1)
-        self.addItem(self._border_item)
 
-        # Create cells — use explicit QColor objects
+        # --- Border: draw as a filled frame around the board ---
+        if border_w > 0:
+            border_color = QColor(s.border_color)
+            if not border_color.isValid():
+                border_color = QColor(0, 0, 0)
+
+            # Outer rect path minus inner rect = frame
+            outer = QRectF(
+                ox - border_w, oy - border_w,
+                board_w + 2 * border_w, board_h + 2 * border_w
+            )
+            inner = QRectF(ox, oy, board_w, board_h)
+
+            path = QPainterPath()
+            path.addRect(outer)
+            path.addRect(inner)
+
+            self._border_item = QGraphicsPathItem(path)
+            self._border_item.setPen(QPen(Qt.PenStyle.NoPen))
+            self._border_item.setBrush(QBrush(border_color))
+            self._border_item.setZValue(1)  # Above cells
+            self.addItem(self._border_item)
+
+        # --- Cells ---
         light_qc = QColor(s.light_color)
         dark_qc = QColor(s.dark_color)
         if not light_qc.isValid():
@@ -126,18 +131,21 @@ class ChessBoardScene(QGraphicsScene):
                 self.addItem(cell)
                 self._cells[row][col] = cell
 
-        # Create coordinate labels
+        # --- Coordinate labels ---
         self._coord_items = []
+        coord_color = s.coord_color
+        if not QColor(coord_color).isValid():
+            coord_color = "#000000"
+
         for i in range(8):
             # File labels (a-h) below the board
             file_label = CoordinateItem(
-                FILES[i], s.coord_font, s.coord_size, s.coord_color
+                FILES[i], s.coord_font, s.coord_size, coord_color
             )
             lw = file_label.boundingRect().width()
-            lh = file_label.boundingRect().height()
             file_label.setPos(
                 ox + i * sq + (sq - lw) / 2,
-                oy + 8 * sq + border + 2
+                oy + board_h + border_w + coord_dist
             )
             file_label.setZValue(5)
             self.addItem(file_label)
@@ -145,12 +153,12 @@ class ChessBoardScene(QGraphicsScene):
 
             # Rank labels (8-1) to the left
             rank_label = CoordinateItem(
-                RANKS[i], s.coord_font, s.coord_size, s.coord_color
+                RANKS[i], s.coord_font, s.coord_size, coord_color
             )
             rw = rank_label.boundingRect().width()
             rh = rank_label.boundingRect().height()
             rank_label.setPos(
-                ox - border - rw - 4,
+                ox - border_w - coord_dist - rw,
                 oy + i * sq + (sq - rh) / 2
             )
             rank_label.setZValue(5)
@@ -158,12 +166,11 @@ class ChessBoardScene(QGraphicsScene):
             self._coord_items.append(rank_label)
 
         # Set scene rect with padding
-        total_w = coord_margin + 2 * border + board_w + 40
-        total_h = 2 * border + board_h + coord_margin + 40
+        total_w = coord_space + 2 * border_w + board_w + coord_space + 40
+        total_h = 2 * border_w + board_h + coord_space + 40
         self.setSceneRect(-20, -20, total_w + 20, total_h + 20)
 
     def _remove_board_items(self):
-        """Remove all board visual items."""
         for row in range(8):
             for col in range(8):
                 if self._cells[row][col]:
@@ -177,26 +184,18 @@ class ChessBoardScene(QGraphicsScene):
             self._border_item = None
 
     def rebuild_board(self):
-        """Rebuild the board with current settings, preserving pieces."""
-        # Save current pieces
         saved_pieces = {}
         for (r, c), piece in list(self._pieces.items()):
             saved_pieces[(r, c)] = piece.piece_type
             self.removeItem(piece)
         self._pieces.clear()
-
         self._build_board()
-
-        # Restore pieces
         for (r, c), ptype in saved_pieces.items():
             self.place_piece(ptype, r, c)
 
     def place_piece(self, piece_type: str, row: int, col: int):
-        """Place a piece on the board."""
         if not (0 <= row < 8 and 0 <= col < 8):
             return
-
-        # Remove existing piece at this position
         self.remove_piece(row, col)
 
         path = self._loaded_piece_paths.get(piece_type)
@@ -209,75 +208,66 @@ class ChessBoardScene(QGraphicsScene):
         piece.board_row = row
         piece.board_col = col
 
-        # Center piece on cell — use logical pixmap size
+        # Center piece on cell
         cell = self._cells[row][col]
         if cell:
             pm = piece.pixmap()
-            logical_size = pm.width() / pm.devicePixelRatio()
-            cx = cell.pos().x() + (sq - logical_size) / 2
-            cy = cell.pos().y() + (sq - logical_size) / 2
+            pw = pm.width()
+            ph = pm.height()
+            cx = cell.pos().x() + (sq - pw) / 2
+            cy = cell.pos().y() + (sq - ph) / 2
             piece.setPos(cx, cy)
 
         self.addItem(piece)
         self._pieces[(row, col)] = piece
 
     def remove_piece(self, row: int, col: int):
-        """Remove piece from a position."""
         key = (row, col)
         if key in self._pieces:
             self.removeItem(self._pieces[key])
             del self._pieces[key]
 
     def clear_all_pieces(self):
-        """Remove all pieces from the board."""
         for key in list(self._pieces.keys()):
             self.removeItem(self._pieces[key])
         self._pieces.clear()
 
     def set_starting_position(self):
-        """Set the standard chess starting position."""
         self.clear_all_pieces()
         for (row, col), piece_type in STARTING_POSITION.items():
             self.place_piece(piece_type, row, col)
 
     def snap_piece_to_square(self, piece: ChessPieceItem):
-        """Snap a piece to the nearest valid square after dragging."""
         center = piece.pos() + piece.boundingRect().center()
         row, col = self._pos_to_square(center)
 
         if row is None:
-            # Dropped outside board — remove it
             old_key = (piece.board_row, piece.board_col)
             if old_key in self._pieces and self._pieces[old_key] is piece:
                 del self._pieces[old_key]
             self.removeItem(piece)
             return
 
-        # Remove piece from old position
         old_key = (piece.board_row, piece.board_col)
         if old_key in self._pieces and self._pieces[old_key] is piece:
             del self._pieces[old_key]
 
-        # Remove any existing piece at target
         self.remove_piece(row, col)
 
-        # Place at new position
         piece.board_row = row
         piece.board_col = col
         self._pieces[(row, col)] = piece
 
         sq = self.settings.square_size
-        pm = piece.pixmap()
-        # Use logical size (account for devicePixelRatio)
-        piece_size = pm.width() / pm.devicePixelRatio()
+        pw = piece.pixmap().width()
+        ph = piece.pixmap().height()
         cell = self._cells[row][col]
         if cell:
-            cx = cell.pos().x() + (sq - piece_size) / 2
-            cy = cell.pos().y() + (sq - piece_size) / 2
+            cx = cell.pos().x() + (sq - pw) / 2
+            cy = cell.pos().y() + (sq - ph) / 2
             piece.setPos(cx, cy)
 
     def _pos_to_square(self, pos):
-        """Convert scene position to (row, col) or (None, None)."""
         for row in range(8):
             for col in range(8):
                 cell = self._cells[row][col]
@@ -289,12 +279,12 @@ class ChessBoardScene(QGraphicsScene):
 
     def board_bounding_rect(self) -> QRectF:
         """Get the bounding rect of the board including border and coords."""
-        # Find the actual bounds of all board items
         min_x = float('inf')
         min_y = float('inf')
         max_x = float('-inf')
         max_y = float('-inf')
 
+        # Include cells
         for row in range(8):
             for col in range(8):
                 cell = self._cells[row][col]
@@ -305,15 +295,26 @@ class ChessBoardScene(QGraphicsScene):
                     max_x = max(max_x, r.right())
                     max_y = max(max_y, r.bottom())
 
-        border = self.settings.border_thickness
-        coord_margin = self.settings.coord_size + 12
+        # Include border
+        border_w = self.settings.border_thickness
+        min_x -= border_w
+        min_y -= border_w
+        max_x += border_w
+        max_y += border_w
 
-        return QRectF(
-            min_x - border - coord_margin,
-            min_y - border - 4,
-            (max_x - min_x) + 2 * border + coord_margin + 8,
-            (max_y - min_y) + 2 * border + coord_margin + 8
-        )
+        # Include coordinate labels
+        for item in self._coord_items:
+            ir = item.sceneBoundingRect()
+            min_x = min(min_x, ir.left())
+            min_y = min(min_y, ir.top())
+            max_x = max(max_x, ir.right())
+            max_y = max(max_y, ir.bottom())
+
+        # Small padding
+        pad = 4
+        return QRectF(min_x - pad, min_y - pad,
+                      (max_x - min_x) + 2 * pad,
+                      (max_y - min_y) + 2 * pad)
 
     def export_to_image(self, dpi: int = 300, transparent: bool = False) -> QImage:
         """Render the board to a QImage at specified DPI."""
@@ -330,7 +331,7 @@ class ChessBoardScene(QGraphicsScene):
         else:
             image.fill(Qt.GlobalColor.white)
 
-        # Temporarily upscale SVG pieces
+        # Temporarily upscale SVG pieces for high-res export
         original_pixmaps = {}
         for key, piece in self._pieces.items():
             if piece.is_svg and piece.svg_data:
@@ -344,7 +345,7 @@ class ChessBoardScene(QGraphicsScene):
         self.render(painter, QRectF(0, 0, width, height), rect)
         painter.end()
 
-        # Restore original pixmaps
+        # Restore
         for key, pixmap in original_pixmaps.items():
             if key in self._pieces:
                 self._pieces[key].setPixmap(pixmap)
@@ -352,7 +353,6 @@ class ChessBoardScene(QGraphicsScene):
         return image
 
     def export_to_svg(self, filepath: str):
-        """Export the board to SVG file."""
         from PyQt6.QtSvg import QSvgGenerator
         from PyQt6.QtCore import QSize
 
@@ -371,7 +371,6 @@ class ChessBoardScene(QGraphicsScene):
         painter.end()
 
     def update_cell_colors(self, light: str, dark: str):
-        """Update all cell colors."""
         self.settings.light_color = light
         self.settings.dark_color = dark
         light_qc = QColor(light)
@@ -383,34 +382,32 @@ class ChessBoardScene(QGraphicsScene):
                     cell.set_color(light_qc if cell.is_light else dark_qc)
 
     def update_background(self, color: str):
-        """Update the scene background color."""
         self.settings.background_color = color
         self.setBackgroundBrush(QBrush(QColor(color)))
 
     def update_border(self, thickness: int, color: str):
-        """Update board border."""
         self.settings.border_thickness = thickness
         self.settings.border_color = color
         self.rebuild_board()
 
     def update_coordinates(self, font: str, size: int, color: str,
                            position: str = "outside"):
-        """Update coordinate labels."""
         self.settings.coord_font = font
         self.settings.coord_size = size
         self.settings.coord_color = color
         self.settings.coord_position = position
         self.rebuild_board()
 
+    def update_coord_distance(self, distance: int):
+        self.settings.coord_distance = distance
+        self.rebuild_board()
+
     def update_square_size(self, size: int):
-        """Update the square size (board scale)."""
         self.settings.square_size = size
         self.rebuild_board()
 
     def update_piece_scale(self, scale: float):
-        """Update piece scale relative to square."""
         self.settings.piece_scale = scale
-        # Re-place all existing pieces
         for (row, col), piece in list(self._pieces.items()):
             ptype = piece.piece_type
             self.removeItem(piece)
@@ -418,8 +415,6 @@ class ChessBoardScene(QGraphicsScene):
             self.place_piece(ptype, row, col)
 
     def set_cell_texture(self, is_light: bool, pixmap):
-        """Set texture for light or dark cells."""
-        from PyQt6.QtGui import QPixmap
         for row in range(8):
             for col in range(8):
                 cell = self._cells[row][col]
@@ -454,7 +449,6 @@ class ChessBoardScene(QGraphicsScene):
             super().dropEvent(event)
 
     def mousePressEvent(self, event):
-        """Right-click to remove piece."""
         if event.button() == Qt.MouseButton.RightButton:
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)

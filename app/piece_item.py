@@ -2,7 +2,7 @@
 
 import os
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsItem
-from PyQt6.QtGui import QPixmap, QPainter, QCursor
+from PyQt6.QtGui import QPixmap, QPainter, QCursor, QImage
 from PyQt6.QtCore import Qt, QByteArray, QRectF
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -41,17 +41,18 @@ class ChessPieceItem(QGraphicsPixmapItem):
 
     @classmethod
     def from_png(cls, path: str, piece_type: str, target_size: int) -> 'ChessPieceItem':
-        pixmap = QPixmap(path)
-        if pixmap.isNull():
-            pixmap = QPixmap(target_size, target_size)
-            pixmap.fill(Qt.GlobalColor.red)
+        # Load via QImage to avoid DPI-dependent QPixmap sizing
+        img = QImage(path)
+        if img.isNull():
+            img = QImage(target_size, target_size, QImage.Format.Format_ARGB32)
+            img.fill(Qt.GlobalColor.red)
         else:
-            pixmap = pixmap.scaled(
+            img = img.scaled(
                 target_size, target_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
-        pixmap.setDevicePixelRatio(1.0)
+        pixmap = QPixmap.fromImage(img)
         item = cls(pixmap, piece_type, path, is_svg=False)
         item._square_size = target_size
         return item
@@ -66,25 +67,27 @@ class ChessPieceItem(QGraphicsPixmapItem):
 
     @staticmethod
     def _render_svg(svg_data: bytes, size: int) -> QPixmap:
+        """Render SVG to a QPixmap via QImage to guarantee exact pixel size."""
         renderer = QSvgRenderer(QByteArray(svg_data))
-        pixmap = QPixmap(size, size)
-        pixmap.setDevicePixelRatio(1.0)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
+        # Use QImage (not QPixmap) to avoid DPI-dependent buffer sizes
+        image = QImage(size, size, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
         renderer.render(painter)
         painter.end()
-        return pixmap
+        return QPixmap.fromImage(image)
 
     def render_at_size(self, size: int) -> QPixmap:
         """Re-render at a specific size (for export)."""
         if self.is_svg and self.svg_data:
             return self._render_svg(self.svg_data, size)
         else:
-            return self.pixmap().scaled(
+            img = self.pixmap().toImage().scaled(
                 size, size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
+            return QPixmap.fromImage(img)
 
     def set_square_size(self, size: int):
         """Resize piece to fit a new square size."""
@@ -92,11 +95,12 @@ class ChessPieceItem(QGraphicsPixmapItem):
         if self.is_svg and self.svg_data:
             self.setPixmap(self._render_svg(self.svg_data, size))
         else:
-            self.setPixmap(self.pixmap().scaled(
+            img = self.pixmap().toImage().scaled(
                 size, size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
-            ))
+            )
+            self.setPixmap(QPixmap.fromImage(img))
 
     def mousePressEvent(self, event):
         self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
