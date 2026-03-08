@@ -1,9 +1,8 @@
 """Chess piece graphics item — DPI-independent using QGraphicsItem + QImage."""
 
 import os
-from collections import deque
 from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
-from PyQt6.QtGui import QPainter, QCursor, QImage, QColor
+from PyQt6.QtGui import QPainter, QCursor, QImage
 from PyQt6.QtCore import Qt, QByteArray, QRectF
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -59,8 +58,6 @@ class ChessPieceItem(QGraphicsItem):
             original = QImage(target_size, target_size,
                               QImage.Format.Format_ARGB32)
             original.fill(Qt.GlobalColor.red)
-        # Auto-remove solid background (e.g. white) from imported images
-        original = cls._remove_solid_background(original)
         # Keep full-resolution original; scale a copy for display
         display = original.scaled(
             target_size, target_size,
@@ -111,103 +108,6 @@ class ChessPieceItem(QGraphicsItem):
                 painter.drawImage(dest, img)
 
     # ---- helpers ---------------------------------------------------------
-
-    @staticmethod
-    def _remove_solid_background(image: QImage) -> QImage:
-        """Auto-detect and remove solid background via flood fill from edges.
-
-        Samples ALL pixels along the image border to find the dominant opaque
-        color.  If enough edge pixels share that color it is treated as a solid
-        background and flood-filled to transparent.  This handles chess-piece
-        PNGs saved with a white (or other solid) backdrop — even when the piece
-        extends into some corners.
-        """
-        from collections import Counter
-
-        img = image.convertToFormat(QImage.Format.Format_ARGB32)
-        w, h = img.width(), img.height()
-        if w < 4 or h < 4:
-            return img
-
-        # Collect all edge pixel coordinates and values
-        edge_coords = []
-        edge_pixels = []
-        for x in range(w):                          # top + bottom rows
-            edge_coords.append((x, 0))
-            edge_pixels.append(img.pixel(x, 0))
-            edge_coords.append((x, h - 1))
-            edge_pixels.append(img.pixel(x, h - 1))
-        for y in range(1, h - 1):                   # left + right columns
-            edge_coords.append((0, y))
-            edge_pixels.append(img.pixel(0, y))
-            edge_coords.append((w - 1, y))
-            edge_pixels.append(img.pixel(w - 1, y))
-
-        # Keep only opaque edge pixels
-        opaque = [(px, coord) for px, coord in zip(edge_pixels, edge_coords)
-                  if ((px >> 24) & 0xFF) >= 200]
-        if not opaque:
-            return img          # all edges transparent — nothing to do
-
-        # Find dominant exact pixel value among opaque edges
-        counter = Counter(px for px, _ in opaque)
-        most_common_px, count = counter.most_common(1)[0]
-        if count < len(opaque) * 0.25:
-            return img          # no clear dominant color
-
-        ref_r = (most_common_px >> 16) & 0xFF
-        ref_g = (most_common_px >> 8) & 0xFF
-        ref_b = most_common_px & 0xFF
-
-        threshold = 40
-
-        # Gather all matching edge pixels as flood-fill seeds
-        seeds = []
-        for px, (x, y) in opaque:
-            pr = (px >> 16) & 0xFF
-            pg = (px >> 8) & 0xFF
-            pb = px & 0xFF
-            if (abs(pr - ref_r) <= threshold and
-                    abs(pg - ref_g) <= threshold and
-                    abs(pb - ref_b) <= threshold):
-                seeds.append((x, y))
-
-        if not seeds:
-            return img
-
-        # Flood-fill from all seed edge pixels
-        visited = bytearray(w * h)
-        q = deque(seeds)
-        transparent = 0x00000000
-
-        while q:
-            x, y = q.popleft()
-            if x < 0 or y < 0 or x >= w or y >= h:
-                continue
-            idx = y * w + x
-            if visited[idx]:
-                continue
-            visited[idx] = 1
-
-            px = img.pixel(x, y)
-            pa = (px >> 24) & 0xFF
-            if pa < 200:
-                continue
-            pr = (px >> 16) & 0xFF
-            pg = (px >> 8) & 0xFF
-            pb = px & 0xFF
-            if (abs(pr - ref_r) > threshold or
-                    abs(pg - ref_g) > threshold or
-                    abs(pb - ref_b) > threshold):
-                continue
-
-            img.setPixel(x, y, transparent)
-            q.append((x + 1, y))
-            q.append((x - 1, y))
-            q.append((x, y + 1))
-            q.append((x, y - 1))
-
-        return img
 
     @staticmethod
     def _render_svg_to_image(svg_data: bytes, size: int) -> QImage:

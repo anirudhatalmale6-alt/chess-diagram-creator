@@ -29,7 +29,7 @@ class BoardSettings:
     # K=King, Q=Queen, R=Rook, B=Bishop, N=Knight, P=Pawn
     piece_type_scales: dict = field(default_factory=lambda: {
         "K": 100, "Q": 100, "R": 100,
-        "B": 100, "N": 100, "P": 75,
+        "B": 100, "N": 100, "P": 100,
     })
     light_texture_path: str = ""
     dark_texture_path: str = ""
