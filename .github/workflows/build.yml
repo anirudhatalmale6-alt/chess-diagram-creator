@@ -1,0 +1,41 @@
+name: Build Windows Installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install PyQt6 PyQt6-Qt6 pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          python -m PyInstaller chess_diagram_creator.spec --noconfirm
+
+      - name: Build Installer with Inno Setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
+        with:
+          path: installer/setup.iss
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChessDiagramCreator-Installer
+          path: dist/ChessDiagramCreator_Setup_*.exe
+
+      - name: Upload Portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChessDiagramCreator-Portable
+          path: dist/ChessDiagramCreator/

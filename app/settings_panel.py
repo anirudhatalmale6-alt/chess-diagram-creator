@@ -1,0 +1,206 @@
+"""Settings panel — right sidebar with board customization controls."""
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QGroupBox, QFormLayout, QSpinBox,
+    QPushButton, QColorDialog, QComboBox, QSlider, QLabel,
+    QFontComboBox, QHBoxLayout, QFileDialog, QScrollArea,
+)
+from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal
+
+
+class ColorButton(QPushButton):
+    """Button that shows and lets user pick a color."""
+    colorChanged = pyqtSignal(str)
+
+    def __init__(self, color: str, parent=None):
+        super().__init__(parent)
+        self._color = color
+        self._update_style()
+        self.clicked.connect(self._pick_color)
+        self.setFixedSize(60, 28)
+
+    def _update_style(self):
+        self.setStyleSheet(
+            f"background-color: {self._color}; border: 1px solid #666; border-radius: 3px;"
+        )
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self._color), self)
+        if color.isValid():
+            self._color = color.name()
+            self._update_style()
+            self.colorChanged.emit(self._color)
+
+    def color(self) -> str:
+        return self._color
+
+    def set_color(self, color: str):
+        self._color = color
+        self._update_style()
+
+
+class SettingsPanel(QWidget):
+    """Right sidebar with all board customization controls."""
+
+    # Signals
+    lightColorChanged = pyqtSignal(str)
+    darkColorChanged = pyqtSignal(str)
+    backgroundColorChanged = pyqtSignal(str)
+    borderThicknessChanged = pyqtSignal(int)
+    borderColorChanged = pyqtSignal(str)
+    coordFontChanged = pyqtSignal(str, int)
+    coordColorChanged = pyqtSignal(str)
+    coordPositionChanged = pyqtSignal(str)
+    squareSizeChanged = pyqtSignal(int)
+    pieceScaleChanged = pyqtSignal(float)
+    lightTextureRequested = pyqtSignal()
+    darkTextureRequested = pyqtSignal()
+    clearTexturesRequested = pyqtSignal()
+
+    def __init__(self, settings, parent=None):
+        super().__init__(parent)
+        self.settings = settings
+        self._setup_ui()
+
+    def _setup_ui(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        container = QWidget()
+        main_layout = QVBoxLayout(container)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(8)
+
+        # --- Board Colors ---
+        colors_group = QGroupBox("Board Colors")
+        colors_layout = QFormLayout()
+
+        self.light_btn = ColorButton(self.settings.light_color)
+        self.light_btn.colorChanged.connect(self.lightColorChanged.emit)
+        colors_layout.addRow("Light squares:", self.light_btn)
+
+        self.dark_btn = ColorButton(self.settings.dark_color)
+        self.dark_btn.colorChanged.connect(self.darkColorChanged.emit)
+        colors_layout.addRow("Dark squares:", self.dark_btn)
+
+        self.bg_btn = ColorButton(self.settings.background_color)
+        self.bg_btn.colorChanged.connect(self.backgroundColorChanged.emit)
+        colors_layout.addRow("Background:", self.bg_btn)
+
+        colors_group.setLayout(colors_layout)
+        main_layout.addWidget(colors_group)
+
+        # --- Border ---
+        border_group = QGroupBox("Border")
+        border_layout = QFormLayout()
+
+        self.border_spin = QSpinBox()
+        self.border_spin.setRange(0, 20)
+        self.border_spin.setValue(self.settings.border_thickness)
+        self.border_spin.valueChanged.connect(self.borderThicknessChanged.emit)
+        border_layout.addRow("Thickness:", self.border_spin)
+
+        self.border_color_btn = ColorButton(self.settings.border_color)
+        self.border_color_btn.colorChanged.connect(self.borderColorChanged.emit)
+        border_layout.addRow("Color:", self.border_color_btn)
+
+        border_group.setLayout(border_layout)
+        main_layout.addWidget(border_group)
+
+        # --- Coordinates ---
+        coord_group = QGroupBox("Coordinates")
+        coord_layout = QFormLayout()
+
+        self.coord_font = QFontComboBox()
+        self.coord_font.setCurrentFont(self.coord_font.font())
+        self.coord_font.currentFontChanged.connect(
+            lambda f: self.coordFontChanged.emit(f.family(), self.coord_size_spin.value())
+        )
+        coord_layout.addRow("Font:", self.coord_font)
+
+        self.coord_size_spin = QSpinBox()
+        self.coord_size_spin.setRange(6, 30)
+        self.coord_size_spin.setValue(self.settings.coord_size)
+        self.coord_size_spin.valueChanged.connect(
+            lambda v: self.coordFontChanged.emit(self.coord_font.currentFont().family(), v)
+        )
+        coord_layout.addRow("Size:", self.coord_size_spin)
+
+        self.coord_color_btn = ColorButton(self.settings.coord_color)
+        self.coord_color_btn.colorChanged.connect(self.coordColorChanged.emit)
+        coord_layout.addRow("Color:", self.coord_color_btn)
+
+        self.coord_pos_combo = QComboBox()
+        self.coord_pos_combo.addItems(["outside", "inside"])
+        self.coord_pos_combo.setCurrentText(self.settings.coord_position)
+        self.coord_pos_combo.currentTextChanged.connect(self.coordPositionChanged.emit)
+        coord_layout.addRow("Position:", self.coord_pos_combo)
+
+        coord_group.setLayout(coord_layout)
+        main_layout.addWidget(coord_group)
+
+        # --- Board Scale ---
+        scale_group = QGroupBox("Board Scale")
+        scale_layout = QFormLayout()
+
+        self.sq_size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sq_size_slider.setRange(40, 120)
+        self.sq_size_slider.setValue(self.settings.square_size)
+        self.sq_size_label = QLabel(f"{self.settings.square_size} px")
+        self.sq_size_slider.valueChanged.connect(self._on_square_size)
+        scale_layout.addRow("Square size:", self.sq_size_slider)
+        scale_layout.addRow("", self.sq_size_label)
+
+        scale_group.setLayout(scale_layout)
+        main_layout.addWidget(scale_group)
+
+        # --- Cell Textures ---
+        tex_group = QGroupBox("Cell Textures")
+        tex_layout = QVBoxLayout()
+
+        light_tex_btn = QPushButton("Load Light Texture")
+        light_tex_btn.clicked.connect(self.lightTextureRequested.emit)
+        tex_layout.addWidget(light_tex_btn)
+
+        dark_tex_btn = QPushButton("Load Dark Texture")
+        dark_tex_btn.clicked.connect(self.darkTextureRequested.emit)
+        tex_layout.addWidget(dark_tex_btn)
+
+        clear_tex_btn = QPushButton("Clear Textures")
+        clear_tex_btn.clicked.connect(self.clearTexturesRequested.emit)
+        tex_layout.addWidget(clear_tex_btn)
+
+        tex_group.setLayout(tex_layout)
+        main_layout.addWidget(tex_group)
+
+        # --- Piece Size ---
+        piece_group = QGroupBox("Piece Size")
+        piece_layout = QFormLayout()
+
+        self.piece_scale_slider = QSlider(Qt.Orientation.Horizontal)
+        self.piece_scale_slider.setRange(50, 100)
+        self.piece_scale_slider.setValue(int(self.settings.piece_scale * 100))
+        self.piece_scale_label = QLabel(f"{int(self.settings.piece_scale * 100)}%")
+        self.piece_scale_slider.valueChanged.connect(self._on_piece_scale)
+        piece_layout.addRow("Scale:", self.piece_scale_slider)
+        piece_layout.addRow("", self.piece_scale_label)
+
+        piece_group.setLayout(piece_layout)
+        main_layout.addWidget(piece_group)
+
+        main_layout.addStretch()
+
+        scroll.setWidget(container)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+
+    def _on_square_size(self, value):
+        self.sq_size_label.setText(f"{value} px")
+        self.squareSizeChanged.emit(value)
+
+    def _on_piece_scale(self, value):
+        self.piece_scale_label.setText(f"{value}%")
+        self.pieceScaleChanged.emit(value / 100.0)
