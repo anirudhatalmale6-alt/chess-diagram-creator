@@ -8,9 +8,9 @@ from app.constants import APP_NAME
 
 
 def main():
-    # Disable automatic high-DPI scaling to avoid piece sizing issues on Windows
-    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
-    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
+    # Force scale factor to 1 — the app manages its own sizes.
+    # QT_SCALE_FACTOR is respected by Qt 6 (the Qt 5 vars are deprecated).
+    os.environ["QT_SCALE_FACTOR"] = "1"
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)

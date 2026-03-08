@@ -20,11 +20,11 @@ from .constants import APP_NAME, APP_VERSION
 
 def _get_assets_dir():
     """Get path to assets directory (works for dev and PyInstaller)."""
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         base = sys._MEIPASS
     else:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, 'assets')
+    return os.path.join(base, "assets")
 
 
 class MainWindow(QMainWindow):
@@ -37,23 +37,22 @@ class MainWindow(QMainWindow):
 
         self.settings = BoardSettings()
         self._assets_dir = _get_assets_dir()
-        self._pieces_dir = os.path.join(self._assets_dir, 'pieces', 'default')
+        self._pieces_dir = os.path.join(self._assets_dir, "pieces", "default")
 
         self._setup_scene()
         self._setup_palette()
         self._setup_settings()
 
-        # Create actions ONCE, then share between toolbar and menu
         self._create_actions()
         self._setup_toolbar()
         self._setup_menu()
         self._setup_statusbar()
 
-        # Load default pieces into palette
         pieces = self.scene.get_loaded_pieces()
         self.palette.load_pieces(pieces)
-
         self.statusBar().showMessage("Ready")
+
+    # ---- UI setup ---------------------------------------------------------
 
     def _setup_scene(self):
         self.scene = ChessBoardScene(self.settings, self._pieces_dir)
@@ -65,8 +64,8 @@ class MainWindow(QMainWindow):
         dock = QDockWidget("Pieces", self)
         dock.setWidget(self.palette)
         dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetMovable |
-            QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
         )
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
         self._palette_dock = dock
@@ -76,13 +75,12 @@ class MainWindow(QMainWindow):
         dock = QDockWidget("Settings", self)
         dock.setWidget(self.settings_panel)
         dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetMovable |
-            QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
         )
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._settings_dock = dock
 
-        # Connect signals
         sp = self.settings_panel
         sp.lightColorChanged.connect(self._on_light_color)
         sp.darkColorChanged.connect(self._on_dark_color)
@@ -100,7 +98,6 @@ class MainWindow(QMainWindow):
         sp.clearTexturesRequested.connect(self._clear_textures)
 
     def _create_actions(self):
-        """Create all actions once — avoids duplicate shortcut conflicts."""
         self._start_action = QAction("Start Position", self)
         self._start_action.setShortcut(QKeySequence("F5"))
         self._start_action.setToolTip("Set standard starting position (F5)")
@@ -126,6 +123,18 @@ class MainWindow(QMainWindow):
         self._zoom_reset_action.setToolTip("Reset zoom level (Ctrl+0)")
         self._zoom_reset_action.triggered.connect(self.view.reset_zoom)
 
+        self._save_template_action = QAction("Save Template...", self)
+        self._save_template_action.setShortcut(QKeySequence("Ctrl+S"))
+        self._save_template_action.setToolTip(
+            "Save board settings as template (Ctrl+S)")
+        self._save_template_action.triggered.connect(self._on_save_template)
+
+        self._load_template_action = QAction("Load Template...", self)
+        self._load_template_action.setShortcut(QKeySequence("Ctrl+L"))
+        self._load_template_action.setToolTip(
+            "Load board settings from template (Ctrl+L)")
+        self._load_template_action.triggered.connect(self._on_load_template)
+
         self._quit_action = QAction("Quit", self)
         self._quit_action.setShortcut(QKeySequence("Ctrl+Q"))
         self._quit_action.triggered.connect(self.close)
@@ -145,38 +154,40 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
         toolbar.addAction(self._export_action)
         toolbar.addSeparator()
+        toolbar.addAction(self._save_template_action)
+        toolbar.addAction(self._load_template_action)
+        toolbar.addSeparator()
         toolbar.addAction(self._zoom_reset_action)
 
     def _setup_menu(self):
         menubar = self.menuBar()
 
-        # File menu
         file_menu = menubar.addMenu("File")
         file_menu.addAction(self._load_action)
         file_menu.addAction(self._export_action)
         file_menu.addSeparator()
+        file_menu.addAction(self._save_template_action)
+        file_menu.addAction(self._load_template_action)
+        file_menu.addSeparator()
         file_menu.addAction(self._quit_action)
 
-        # Edit menu
         edit_menu = menubar.addMenu("Edit")
         edit_menu.addAction(self._start_action)
         edit_menu.addAction(self._clear_action)
 
-        # View menu
         view_menu = menubar.addMenu("View")
         view_menu.addAction(self._zoom_reset_action)
         view_menu.addSeparator()
         view_menu.addAction(self._palette_dock.toggleViewAction())
         view_menu.addAction(self._settings_dock.toggleViewAction())
 
-        # Help menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction(self._about_action)
 
     def _setup_statusbar(self):
         self.setStatusBar(QStatusBar())
 
-    # --- Actions ---
+    # ---- actions ----------------------------------------------------------
 
     def _on_start_position(self):
         self.scene.set_starting_position()
@@ -188,14 +199,22 @@ class MainWindow(QMainWindow):
 
     def _on_load_pieces(self):
         folder = QFileDialog.getExistingDirectory(
-            self, "Select Pieces Folder"
-        )
+            self, "Select Pieces Folder")
         if folder:
-            self.scene.load_pieces_from_folder(folder)
+            count = self.scene.load_pieces_from_folder(folder)
             pieces = self.scene.get_loaded_pieces()
             self.palette.load_pieces(pieces)
-            count = len(pieces)
-            self.statusBar().showMessage(f"Loaded {count} pieces from {folder}")
+            self.statusBar().showMessage(
+                f"Loaded {count} pieces from {folder}")
+            if count == 0:
+                QMessageBox.warning(
+                    self, "No Pieces Found",
+                    "No chess piece images were detected in the selected "
+                    "folder.\n\n"
+                    "Supported naming: wK.png, bQ.svg, white_king.png, "
+                    "black-queen.jpg, etc.\n"
+                    "Supported formats: SVG, PNG, JPG, BMP, GIF, WebP",
+                )
 
     def _on_export(self):
         dlg = ExportDialog(self)
@@ -203,10 +222,11 @@ class MainWindow(QMainWindow):
             result = dlg.get_result()
             try:
                 self._do_export(result)
-                self.statusBar().showMessage(f"Exported to {result['path']}")
+                self.statusBar().showMessage(
+                    f"Exported to {result['path']}")
                 QMessageBox.information(
                     self, "Export",
-                    f"Diagram exported successfully!\n{result['path']}"
+                    f"Diagram exported successfully!\n{result['path']}",
                 )
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", str(e))
@@ -221,18 +241,13 @@ class MainWindow(QMainWindow):
         elif fmt == "PDF":
             self._export_pdf(path, dpi)
         else:
-            # Raster formats: PNG, JPEG, BMP
-            image = self.scene.export_to_image(dpi)
-
-            if params.get("transparent_bg") and fmt == "PNG":
-                # Re-render with transparent background
-                image = self.scene.export_to_image(dpi, transparent=True)
-
-            # Qt uses "JPG" not "JPEG" for save format
+            transparent = params.get("transparent_bg") and fmt == "PNG"
+            image = self.scene.export_to_image(dpi, transparent=transparent)
             save_fmt = "JPG" if fmt == "JPEG" else fmt
             ok = image.save(path, save_fmt)
             if not ok:
-                raise RuntimeError(f"Failed to save image as {fmt} to: {path}")
+                raise RuntimeError(
+                    f"Failed to save image as {fmt} to: {path}")
 
     def _export_pdf(self, path: str, dpi: int):
         from PyQt6.QtGui import QPdfWriter, QPainter, QPageSize
@@ -243,8 +258,9 @@ class MainWindow(QMainWindow):
         writer.setResolution(dpi)
 
         page_size = QPageSize(
-            QSizeF(rect.width() / 96.0 * 25.4, rect.height() / 96.0 * 25.4),
-            QPageSize.Unit.Millimeter
+            QSizeF(rect.width() / 96.0 * 25.4,
+                   rect.height() / 96.0 * 25.4),
+            QPageSize.Unit.Millimeter,
         )
         writer.setPageSize(page_size)
         writer.setPageMargins(QMarginsF(0, 0, 0, 0))
@@ -254,7 +270,67 @@ class MainWindow(QMainWindow):
         self.scene.render(painter, source=rect)
         painter.end()
 
-    # --- Settings callbacks ---
+    # ---- template save / load ---------------------------------------------
+
+    def _on_save_template(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Template",
+            os.path.expanduser("~"),
+            "Chess Template (*.cdt);;JSON (*.json)",
+        )
+        if path:
+            try:
+                self.settings.save_template(path, self.scene.pieces_dir)
+                self.statusBar().showMessage(f"Template saved: {path}")
+            except Exception as e:
+                QMessageBox.critical(
+                    self, "Save Template Error", str(e))
+
+    def _on_load_template(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Template",
+            os.path.expanduser("~"),
+            "Chess Template (*.cdt);;JSON (*.json);;All Files (*)",
+        )
+        if path:
+            try:
+                new_settings, pieces_folder = BoardSettings.load_template(path)
+                self._apply_settings(new_settings, pieces_folder)
+                self.statusBar().showMessage(f"Template loaded: {path}")
+            except Exception as e:
+                QMessageBox.critical(
+                    self, "Load Template Error", str(e))
+
+    def _apply_settings(self, new_settings: BoardSettings,
+                        pieces_folder: str):
+        """Apply loaded template settings to the board and UI."""
+        # Update the shared settings object in-place
+        for field_name in new_settings.__dataclass_fields__:
+            setattr(self.settings, field_name,
+                    getattr(new_settings, field_name))
+
+        # Load pieces from template folder if it exists
+        if pieces_folder and os.path.isdir(pieces_folder):
+            self.scene.load_pieces_from_folder(pieces_folder)
+        else:
+            # Fall back to default pieces
+            self.scene.pieces_dir = self._pieces_dir
+            self.scene._load_default_pieces()
+
+        # Rebuild board with new settings
+        from PyQt6.QtGui import QBrush, QColor as QC
+        self.scene.setBackgroundBrush(
+            QBrush(QC(self.settings.background_color)))
+        self.scene.rebuild_board()
+
+        # Update palette
+        pieces = self.scene.get_loaded_pieces()
+        self.palette.load_pieces(pieces)
+
+        # Update settings panel UI to reflect new values
+        self.settings_panel.update_from_settings(self.settings)
+
+    # ---- settings callbacks -----------------------------------------------
 
     def _on_light_color(self, color):
         self.scene.update_cell_colors(color, self.settings.dark_color)
@@ -273,20 +349,18 @@ class MainWindow(QMainWindow):
 
     def _on_coord_font(self, family, size):
         self.scene.update_coordinates(
-            family, size, self.settings.coord_color, self.settings.coord_position
-        )
+            family, size, self.settings.coord_color,
+            self.settings.coord_position)
 
     def _on_coord_color(self, color):
         self.scene.update_coordinates(
             self.settings.coord_font, self.settings.coord_size,
-            color, self.settings.coord_position
-        )
+            color, self.settings.coord_position)
 
     def _on_coord_position(self, pos):
         self.scene.update_coordinates(
             self.settings.coord_font, self.settings.coord_size,
-            self.settings.coord_color, pos
-        )
+            self.settings.coord_color, pos)
 
     def _on_coord_distance(self, dist):
         self.scene.update_coord_distance(dist)
@@ -300,8 +374,7 @@ class MainWindow(QMainWindow):
     def _load_texture(self, is_light: bool):
         path, _ = QFileDialog.getOpenFileName(
             self, "Select Texture Image", "",
-            "Images (*.png *.jpg *.jpeg *.bmp)"
-        )
+            "Images (*.png *.jpg *.jpeg *.bmp)")
         if path:
             pixmap = QPixmap(path)
             if not pixmap.isNull():
@@ -325,5 +398,5 @@ class MainWindow(QMainWindow):
             f"<h2>{APP_NAME}</h2>"
             f"<p>Version {APP_VERSION}</p>"
             f"<p>A simple tool for creating chess diagrams.</p>"
-            f"<p>Chess pieces by Cburnett (BSD License)</p>"
+            f"<p>Chess pieces by Cburnett (BSD License)</p>",
         )

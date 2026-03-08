@@ -3,9 +3,9 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QSpinBox,
     QPushButton, QColorDialog, QComboBox, QSlider, QLabel,
-    QFontComboBox, QHBoxLayout, QFileDialog, QScrollArea,
+    QFontComboBox, QScrollArea,
 )
-from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtCore import Qt, pyqtSignal
 
 
@@ -22,7 +22,8 @@ class ColorButton(QPushButton):
 
     def _update_style(self):
         self.setStyleSheet(
-            f"background-color: {self._color}; border: 1px solid #666; border-radius: 3px;"
+            f"background-color: {self._color}; "
+            f"border: 1px solid #666; border-radius: 3px;"
         )
 
     def _pick_color(self):
@@ -43,7 +44,6 @@ class ColorButton(QPushButton):
 class SettingsPanel(QWidget):
     """Right sidebar with all board customization controls."""
 
-    # Signals
     lightColorChanged = pyqtSignal(str)
     darkColorChanged = pyqtSignal(str)
     backgroundColorChanged = pyqtSignal(str)
@@ -100,11 +100,13 @@ class SettingsPanel(QWidget):
         self.border_spin = QSpinBox()
         self.border_spin.setRange(0, 20)
         self.border_spin.setValue(self.settings.border_thickness)
-        self.border_spin.valueChanged.connect(self.borderThicknessChanged.emit)
+        self.border_spin.valueChanged.connect(
+            self.borderThicknessChanged.emit)
         border_layout.addRow("Thickness:", self.border_spin)
 
         self.border_color_btn = ColorButton(self.settings.border_color)
-        self.border_color_btn.colorChanged.connect(self.borderColorChanged.emit)
+        self.border_color_btn.colorChanged.connect(
+            self.borderColorChanged.emit)
         border_layout.addRow("Color:", self.border_color_btn)
 
         border_group.setLayout(border_layout)
@@ -115,35 +117,38 @@ class SettingsPanel(QWidget):
         coord_layout = QFormLayout()
 
         self.coord_font = QFontComboBox()
-        self.coord_font.setCurrentFont(self.coord_font.font())
+        self.coord_font.setCurrentFont(QFont(self.settings.coord_font))
         self.coord_font.currentFontChanged.connect(
-            lambda f: self.coordFontChanged.emit(f.family(), self.coord_size_spin.value())
-        )
+            lambda f: self.coordFontChanged.emit(
+                f.family(), self.coord_size_spin.value()))
         coord_layout.addRow("Font:", self.coord_font)
 
         self.coord_size_spin = QSpinBox()
-        self.coord_size_spin.setRange(6, 30)
+        self.coord_size_spin.setRange(6, 60)
         self.coord_size_spin.setValue(self.settings.coord_size)
         self.coord_size_spin.valueChanged.connect(
-            lambda v: self.coordFontChanged.emit(self.coord_font.currentFont().family(), v)
-        )
+            lambda v: self.coordFontChanged.emit(
+                self.coord_font.currentFont().family(), v))
         coord_layout.addRow("Size:", self.coord_size_spin)
 
         self.coord_color_btn = ColorButton(self.settings.coord_color)
-        self.coord_color_btn.colorChanged.connect(self.coordColorChanged.emit)
+        self.coord_color_btn.colorChanged.connect(
+            self.coordColorChanged.emit)
         coord_layout.addRow("Color:", self.coord_color_btn)
 
         self.coord_pos_combo = QComboBox()
         self.coord_pos_combo.addItems(["outside", "inside"])
         self.coord_pos_combo.setCurrentText(self.settings.coord_position)
-        self.coord_pos_combo.currentTextChanged.connect(self.coordPositionChanged.emit)
+        self.coord_pos_combo.currentTextChanged.connect(
+            self.coordPositionChanged.emit)
         coord_layout.addRow("Position:", self.coord_pos_combo)
 
         self.coord_dist_spin = QSpinBox()
         self.coord_dist_spin.setRange(0, 40)
-        self.coord_dist_spin.setValue(getattr(self.settings, 'coord_distance', 4))
+        self.coord_dist_spin.setValue(self.settings.coord_distance)
         self.coord_dist_spin.setSuffix(" px")
-        self.coord_dist_spin.valueChanged.connect(self.coordDistanceChanged.emit)
+        self.coord_dist_spin.valueChanged.connect(
+            self.coordDistanceChanged.emit)
         coord_layout.addRow("Distance:", self.coord_dist_spin)
 
         coord_group.setLayout(coord_layout)
@@ -154,7 +159,7 @@ class SettingsPanel(QWidget):
         scale_layout = QFormLayout()
 
         self.sq_size_slider = QSlider(Qt.Orientation.Horizontal)
-        self.sq_size_slider.setRange(40, 120)
+        self.sq_size_slider.setRange(40, 200)
         self.sq_size_slider.setValue(self.settings.square_size)
         self.sq_size_label = QLabel(f"{self.settings.square_size} px")
         self.sq_size_slider.valueChanged.connect(self._on_square_size)
@@ -189,8 +194,10 @@ class SettingsPanel(QWidget):
 
         self.piece_scale_slider = QSlider(Qt.Orientation.Horizontal)
         self.piece_scale_slider.setRange(50, 100)
-        self.piece_scale_slider.setValue(int(self.settings.piece_scale * 100))
-        self.piece_scale_label = QLabel(f"{int(self.settings.piece_scale * 100)}%")
+        self.piece_scale_slider.setValue(
+            int(self.settings.piece_scale * 100))
+        self.piece_scale_label = QLabel(
+            f"{int(self.settings.piece_scale * 100)}%")
         self.piece_scale_slider.valueChanged.connect(self._on_piece_scale)
         piece_layout.addRow("Scale:", self.piece_scale_slider)
         piece_layout.addRow("", self.piece_scale_label)
@@ -212,3 +219,47 @@ class SettingsPanel(QWidget):
     def _on_piece_scale(self, value):
         self.piece_scale_label.setText(f"{value}%")
         self.pieceScaleChanged.emit(value / 100.0)
+
+    def update_from_settings(self, settings):
+        """Update all UI widgets to reflect the given settings.
+
+        Signals are temporarily blocked to avoid triggering callbacks.
+        """
+        self.light_btn.set_color(settings.light_color)
+        self.dark_btn.set_color(settings.dark_color)
+        self.bg_btn.set_color(settings.background_color)
+
+        self.border_spin.blockSignals(True)
+        self.border_spin.setValue(settings.border_thickness)
+        self.border_spin.blockSignals(False)
+
+        self.border_color_btn.set_color(settings.border_color)
+
+        self.coord_font.blockSignals(True)
+        self.coord_font.setCurrentFont(QFont(settings.coord_font))
+        self.coord_font.blockSignals(False)
+
+        self.coord_size_spin.blockSignals(True)
+        self.coord_size_spin.setValue(settings.coord_size)
+        self.coord_size_spin.blockSignals(False)
+
+        self.coord_color_btn.set_color(settings.coord_color)
+
+        self.coord_pos_combo.blockSignals(True)
+        self.coord_pos_combo.setCurrentText(settings.coord_position)
+        self.coord_pos_combo.blockSignals(False)
+
+        self.coord_dist_spin.blockSignals(True)
+        self.coord_dist_spin.setValue(settings.coord_distance)
+        self.coord_dist_spin.blockSignals(False)
+
+        self.sq_size_slider.blockSignals(True)
+        self.sq_size_slider.setValue(settings.square_size)
+        self.sq_size_label.setText(f"{settings.square_size} px")
+        self.sq_size_slider.blockSignals(False)
+
+        scale_pct = int(settings.piece_scale * 100)
+        self.piece_scale_slider.blockSignals(True)
+        self.piece_scale_slider.setValue(scale_pct)
+        self.piece_scale_label.setText(f"{scale_pct}%")
+        self.piece_scale_slider.blockSignals(False)

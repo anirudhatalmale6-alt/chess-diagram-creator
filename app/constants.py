@@ -1,7 +1,7 @@
 """Constants for Chess Diagram Creator."""
 
 APP_NAME = "Chess Diagram Creator"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 PIECE_NAMES = {
     'K': 'King', 'Q': 'Queen', 'R': 'Rook',

@@ -1,6 +1,7 @@
 """Data models for Chess Diagram Creator."""
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, asdict
 from .constants import (
     DEFAULT_LIGHT_COLOR, DEFAULT_DARK_COLOR, DEFAULT_BACKGROUND_COLOR,
     DEFAULT_BORDER_COLOR, DEFAULT_BORDER_THICKNESS, DEFAULT_COORD_FONT,
@@ -22,9 +23,33 @@ class BoardSettings:
     coord_color: str = DEFAULT_COORD_COLOR
     square_size: int = DEFAULT_SQUARE_SIZE
     piece_scale: float = DEFAULT_PIECE_SCALE
-    coord_distance: int = 4  # distance between coordinates and board edge
+    coord_distance: int = 4
     light_texture_path: str = ""
     dark_texture_path: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BoardSettings":
+        known = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in known}
+        return cls(**filtered)
+
+    def save_template(self, filepath: str, pieces_folder: str = ""):
+        """Save settings + pieces folder as a JSON template."""
+        data = self.to_dict()
+        data["_pieces_folder"] = pieces_folder
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+    @classmethod
+    def load_template(cls, filepath: str) -> tuple["BoardSettings", str]:
+        """Load a template. Returns (settings, pieces_folder)."""
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        pieces_folder = data.pop("_pieces_folder", "")
+        return cls.from_dict(data), pieces_folder
 
 
 @dataclass
