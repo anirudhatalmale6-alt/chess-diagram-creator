@@ -56,6 +56,7 @@ class SettingsPanel(QWidget):
     squareSizeChanged = pyqtSignal(int)
     pieceScaleChanged = pyqtSignal(float)
     coordDistanceChanged = pyqtSignal(int)
+    pieceTypeScaleChanged = pyqtSignal(str, int)  # role, percentage
     lightTextureRequested = pyqtSignal()
     darkTextureRequested = pyqtSignal()
     clearTexturesRequested = pyqtSignal()
@@ -212,6 +213,26 @@ class SettingsPanel(QWidget):
         piece_group.setLayout(piece_layout)
         main_layout.addWidget(piece_group)
 
+        # --- Piece Heights (per-type) ---
+        heights_group = QGroupBox("Piece Heights")
+        heights_layout = QFormLayout()
+
+        self._type_scale_spins = {}
+        type_scales = self.settings.piece_type_scales
+        for role, label in [("K", "King"), ("Q", "Queen"), ("R", "Rook"),
+                            ("B", "Bishop"), ("N", "Knight"), ("P", "Pawn")]:
+            spin = QSpinBox()
+            spin.setRange(30, 100)
+            spin.setSuffix("%")
+            spin.setValue(type_scales.get(role, 100))
+            spin.valueChanged.connect(
+                lambda v, r=role: self.pieceTypeScaleChanged.emit(r, v))
+            heights_layout.addRow(f"{label}:", spin)
+            self._type_scale_spins[role] = spin
+
+        heights_group.setLayout(heights_layout)
+        main_layout.addWidget(heights_group)
+
         main_layout.addStretch()
 
         scroll.setWidget(container)
@@ -274,3 +295,8 @@ class SettingsPanel(QWidget):
         self.piece_scale_slider.setValue(scale_pct)
         self.piece_scale_label.setText(f"{scale_pct}%")
         self.piece_scale_slider.blockSignals(False)
+
+        for role, spin in self._type_scale_spins.items():
+            spin.blockSignals(True)
+            spin.setValue(settings.piece_type_scales.get(role, 100))
+            spin.blockSignals(False)

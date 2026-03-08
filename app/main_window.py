@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
         sp.coordDistanceChanged.connect(self._on_coord_distance)
         sp.squareSizeChanged.connect(self._on_square_size)
         sp.pieceScaleChanged.connect(self._on_piece_scale)
+        sp.pieceTypeScaleChanged.connect(self._on_piece_type_scale)
         sp.lightTextureRequested.connect(lambda: self._load_texture(True))
         sp.darkTextureRequested.connect(lambda: self._load_texture(False))
         sp.clearTexturesRequested.connect(self._clear_textures)
@@ -372,6 +373,9 @@ class MainWindow(QMainWindow):
 
     def _on_piece_scale(self, scale):
         self.scene.update_piece_scale(scale)
+
+    def _on_piece_type_scale(self, role, pct):
+        self.scene.update_piece_type_scale(role, pct)
 
     def _load_texture(self, is_light: bool):
         path, _ = QFileDialog.getOpenFileName(

@@ -319,6 +319,14 @@ class ChessBoardScene(QGraphicsScene):
 
     # ---- piece placement --------------------------------------------------
 
+    def _piece_size_for_type(self, piece_type: str) -> int:
+        """Return the pixel size for a piece, applying per-type scale."""
+        sq = self.settings.square_size
+        base_size = int(sq * self.settings.piece_scale)
+        role = piece_type[-1] if piece_type else ""  # "wK" -> "K"
+        type_pct = self.settings.piece_type_scales.get(role, 100)
+        return max(4, int(base_size * type_pct / 100))
+
     def place_piece(self, piece_type: str, row: int, col: int):
         if not (0 <= row < 8 and 0 <= col < 8):
             return
@@ -329,7 +337,7 @@ class ChessBoardScene(QGraphicsScene):
             return
 
         sq = self.settings.square_size
-        piece_size = int(sq * self.settings.piece_scale)
+        piece_size = self._piece_size_for_type(piece_type)
         piece = ChessPieceItem.from_file(path, piece_type, piece_size)
         piece.board_row = row
         piece.board_col = col
@@ -540,6 +548,15 @@ class ChessBoardScene(QGraphicsScene):
 
     def update_piece_scale(self, scale: float):
         self.settings.piece_scale = scale
+        self._replace_all_pieces()
+
+    def update_piece_type_scale(self, role: str, pct: int):
+        """Update the height percentage for a specific piece role."""
+        self.settings.piece_type_scales[role] = pct
+        self._replace_all_pieces()
+
+    def _replace_all_pieces(self):
+        """Re-create all placed pieces with current scale settings."""
         for (row, col), piece in list(self._pieces.items()):
             ptype = piece.piece_type
             self.removeItem(piece)
