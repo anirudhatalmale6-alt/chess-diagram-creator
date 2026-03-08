@@ -1,8 +1,9 @@
 """Chess piece graphics item — DPI-independent using QGraphicsItem + QImage."""
 
 import os
+from collections import deque
 from PyQt6.QtWidgets import QGraphicsItem, QStyleOptionGraphicsItem, QWidget
-from PyQt6.QtGui import QPainter, QCursor, QImage
+from PyQt6.QtGui import QPainter, QCursor, QImage, QColor
 from PyQt6.QtCore import Qt, QByteArray, QRectF
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -58,6 +59,8 @@ class ChessPieceItem(QGraphicsItem):
             original = QImage(target_size, target_size,
                               QImage.Format.Format_ARGB32)
             original.fill(Qt.GlobalColor.red)
+        # Auto-remove solid background (e.g. white) from imported images
+        original = cls._remove_solid_background(original)
         # Keep full-resolution original; scale a copy for display
         display = original.scaled(
             target_size, target_size,
@@ -85,29 +88,96 @@ class ChessPieceItem(QGraphicsItem):
               widget: QWidget | None = None):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         rect = self.boundingRect()
+        ts = self._target_size
         if self.is_svg and self.svg_data:
             # Render SVG directly — always vector-sharp at any zoom / DPI
             renderer = QSvgRenderer(QByteArray(self.svg_data))
             renderer.render(painter, rect)
         else:
             # Draw from original full-resolution image, preserving aspect
-            # ratio so non-square images are not stretched.
+            # ratio.  Centered horizontally, bottom-aligned vertically.
             img = self._original_image
             iw, ih = img.width(), img.height()
-            if iw > 0 and ih > 0 and iw != ih:
-                ts = self._target_size
+            if iw > 0 and ih > 0:
                 aspect = iw / ih
-                if aspect > 1:  # wider than tall
+                if aspect > 1:      # wider than tall
                     dw, dh = ts, ts / aspect
-                else:           # taller than wide
+                elif aspect < 1:    # taller than wide
                     dw, dh = ts * aspect, ts
-                # Bottom-align: pieces sit on the bottom edge of the cell
+                else:               # square
+                    dw, dh = ts, ts
+                # Centered horizontally, bottom-aligned vertically
                 dest = QRectF((ts - dw) / 2, ts - dh, dw, dh)
                 painter.drawImage(dest, img)
-            else:
-                painter.drawImage(rect, img)
 
     # ---- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def _remove_solid_background(image: QImage) -> QImage:
+        """Auto-detect and remove solid background via flood fill from corners.
+
+        If all four corners share a similar opaque color, that color is treated
+        as a solid background and flood-filled to transparent.  This handles
+        chess-piece PNGs that were saved with a white (or other solid) backdrop.
+        """
+        img = image.convertToFormat(QImage.Format.Format_ARGB32)
+        w, h = img.width(), img.height()
+        if w < 4 or h < 4:
+            return img
+
+        # Sample corner pixels (raw ARGB32 packed ints for speed)
+        corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
+        cpx = [img.pixel(x, y) for x, y in corners]
+
+        ref = cpx[0]
+        ref_a = (ref >> 24) & 0xFF
+        if ref_a < 200:          # already (semi-)transparent — nothing to do
+            return img
+        ref_r = (ref >> 16) & 0xFF
+        ref_g = (ref >> 8) & 0xFF
+        ref_b = ref & 0xFF
+
+        threshold = 30
+        for c in cpx[1:]:
+            if (abs(((c >> 16) & 0xFF) - ref_r) > threshold or
+                    abs(((c >> 8) & 0xFF) - ref_g) > threshold or
+                    abs((c & 0xFF) - ref_b) > threshold or
+                    ((c >> 24) & 0xFF) < 200):
+                return img        # corners differ — no uniform background
+
+        # Flood-fill from all four corners
+        visited = bytearray(w * h)          # flat array, 0 = not visited
+        q = deque(corners)
+        transparent = 0x00000000
+
+        while q:
+            x, y = q.popleft()
+            if x < 0 or y < 0 or x >= w or y >= h:
+                continue
+            idx = y * w + x
+            if visited[idx]:
+                continue
+            visited[idx] = 1
+
+            px = img.pixel(x, y)
+            pa = (px >> 24) & 0xFF
+            if pa < 200:
+                continue
+            pr = (px >> 16) & 0xFF
+            pg = (px >> 8) & 0xFF
+            pb = px & 0xFF
+            if (abs(pr - ref_r) > threshold or
+                    abs(pg - ref_g) > threshold or
+                    abs(pb - ref_b) > threshold):
+                continue
+
+            img.setPixel(x, y, transparent)
+            q.append((x + 1, y))
+            q.append((x - 1, y))
+            q.append((x, y + 1))
+            q.append((x, y - 1))
+
+        return img
 
     @staticmethod
     def _render_svg_to_image(svg_data: bytes, size: int) -> QImage:
