@@ -13,7 +13,8 @@ class CellItem(QGraphicsRectItem):
         self.row = row
         self.col = col
         self.is_light = is_light
-        self._base_color = QColor("#F0D9B5") if is_light else QColor("#B58863")
+        # Use explicit RGB to avoid hex parsing issues on some platforms
+        self._base_color = QColor(240, 217, 181) if is_light else QColor(181, 136, 99)
         self._texture_pixmap = None
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self._update_brush()

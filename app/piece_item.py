@@ -51,6 +51,7 @@ class ChessPieceItem(QGraphicsPixmapItem):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
+        pixmap.setDevicePixelRatio(1.0)
         item = cls(pixmap, piece_type, path, is_svg=False)
         item._square_size = target_size
         return item
@@ -67,6 +68,7 @@ class ChessPieceItem(QGraphicsPixmapItem):
     def _render_svg(svg_data: bytes, size: int) -> QPixmap:
         renderer = QSvgRenderer(QByteArray(svg_data))
         pixmap = QPixmap(size, size)
+        pixmap.setDevicePixelRatio(1.0)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         renderer.render(painter)

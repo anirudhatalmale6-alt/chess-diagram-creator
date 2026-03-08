@@ -42,6 +42,9 @@ class MainWindow(QMainWindow):
         self._setup_scene()
         self._setup_palette()
         self._setup_settings()
+
+        # Create actions ONCE, then share between toolbar and menu
+        self._create_actions()
         self._setup_toolbar()
         self._setup_menu()
         self._setup_statusbar()
@@ -95,105 +98,79 @@ class MainWindow(QMainWindow):
         sp.darkTextureRequested.connect(lambda: self._load_texture(False))
         sp.clearTexturesRequested.connect(self._clear_textures)
 
+    def _create_actions(self):
+        """Create all actions once — avoids duplicate shortcut conflicts."""
+        self._start_action = QAction("Start Position", self)
+        self._start_action.setShortcut(QKeySequence("F5"))
+        self._start_action.setToolTip("Set standard starting position (F5)")
+        self._start_action.triggered.connect(self._on_start_position)
+
+        self._clear_action = QAction("Clear Board", self)
+        self._clear_action.setShortcut(QKeySequence("F6"))
+        self._clear_action.setToolTip("Remove all pieces (F6)")
+        self._clear_action.triggered.connect(self._on_clear_board)
+
+        self._load_action = QAction("Load Pieces...", self)
+        self._load_action.setShortcut(QKeySequence("Ctrl+O"))
+        self._load_action.setToolTip("Load piece images from folder (Ctrl+O)")
+        self._load_action.triggered.connect(self._on_load_pieces)
+
+        self._export_action = QAction("Export...", self)
+        self._export_action.setShortcut(QKeySequence("Ctrl+E"))
+        self._export_action.setToolTip("Export diagram (Ctrl+E)")
+        self._export_action.triggered.connect(self._on_export)
+
+        self._zoom_reset_action = QAction("Reset Zoom", self)
+        self._zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
+        self._zoom_reset_action.setToolTip("Reset zoom level (Ctrl+0)")
+        self._zoom_reset_action.triggered.connect(self.view.reset_zoom)
+
+        self._quit_action = QAction("Quit", self)
+        self._quit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        self._quit_action.triggered.connect(self.close)
+
+        self._about_action = QAction("About", self)
+        self._about_action.triggered.connect(self._show_about)
+
     def _setup_toolbar(self):
         toolbar = QToolBar("Main Toolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
-        # Start Position
-        start_action = QAction("Start Position", self)
-        start_action.setShortcut(QKeySequence("F5"))
-        start_action.setToolTip("Set standard starting position (F5)")
-        start_action.triggered.connect(self._on_start_position)
-        toolbar.addAction(start_action)
-
-        # Clear Board
-        clear_action = QAction("Clear Board", self)
-        clear_action.setShortcut(QKeySequence("F6"))
-        clear_action.setToolTip("Remove all pieces (F6)")
-        clear_action.triggered.connect(self._on_clear_board)
-        toolbar.addAction(clear_action)
-
+        toolbar.addAction(self._start_action)
+        toolbar.addAction(self._clear_action)
         toolbar.addSeparator()
-
-        # Load Pieces
-        load_action = QAction("Load Pieces", self)
-        load_action.setShortcut(QKeySequence("Ctrl+O"))
-        load_action.setToolTip("Load piece images from folder (Ctrl+O)")
-        load_action.triggered.connect(self._on_load_pieces)
-        toolbar.addAction(load_action)
-
+        toolbar.addAction(self._load_action)
         toolbar.addSeparator()
-
-        # Export
-        export_action = QAction("Export", self)
-        export_action.setShortcut(QKeySequence("Ctrl+E"))
-        export_action.setToolTip("Export diagram (Ctrl+E)")
-        export_action.triggered.connect(self._on_export)
-        toolbar.addAction(export_action)
-
+        toolbar.addAction(self._export_action)
         toolbar.addSeparator()
-
-        # Reset Zoom
-        zoom_action = QAction("Reset Zoom", self)
-        zoom_action.setShortcut(QKeySequence("Ctrl+0"))
-        zoom_action.setToolTip("Reset zoom level (Ctrl+0)")
-        zoom_action.triggered.connect(self.view.reset_zoom)
-        toolbar.addAction(zoom_action)
+        toolbar.addAction(self._zoom_reset_action)
 
     def _setup_menu(self):
         menubar = self.menuBar()
 
         # File menu
         file_menu = menubar.addMenu("File")
-
-        load_action = QAction("Load Pieces...", self)
-        load_action.setShortcut(QKeySequence("Ctrl+O"))
-        load_action.triggered.connect(self._on_load_pieces)
-        file_menu.addAction(load_action)
-
-        export_action = QAction("Export...", self)
-        export_action.setShortcut(QKeySequence("Ctrl+E"))
-        export_action.triggered.connect(self._on_export)
-        file_menu.addAction(export_action)
-
+        file_menu.addAction(self._load_action)
+        file_menu.addAction(self._export_action)
         file_menu.addSeparator()
-
-        quit_action = QAction("Quit", self)
-        quit_action.setShortcut(QKeySequence("Ctrl+Q"))
-        quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
+        file_menu.addAction(self._quit_action)
 
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
-
-        start_action = QAction("Start Position", self)
-        start_action.setShortcut(QKeySequence("F5"))
-        start_action.triggered.connect(self._on_start_position)
-        edit_menu.addAction(start_action)
-
-        clear_action = QAction("Clear Board", self)
-        clear_action.setShortcut(QKeySequence("F6"))
-        clear_action.triggered.connect(self._on_clear_board)
-        edit_menu.addAction(clear_action)
+        edit_menu.addAction(self._start_action)
+        edit_menu.addAction(self._clear_action)
 
         # View menu
         view_menu = menubar.addMenu("View")
-
-        zoom_reset = QAction("Reset Zoom", self)
-        zoom_reset.setShortcut(QKeySequence("Ctrl+0"))
-        zoom_reset.triggered.connect(self.view.reset_zoom)
-        view_menu.addAction(zoom_reset)
-
+        view_menu.addAction(self._zoom_reset_action)
         view_menu.addSeparator()
         view_menu.addAction(self._palette_dock.toggleViewAction())
         view_menu.addAction(self._settings_dock.toggleViewAction())
 
         # Help menu
         help_menu = menubar.addMenu("Help")
-        about_action = QAction("About", self)
-        about_action.triggered.connect(self._show_about)
-        help_menu.addAction(about_action)
+        help_menu.addAction(self._about_action)
 
     def _setup_statusbar(self):
         self.setStatusBar(QStatusBar())
@@ -216,7 +193,8 @@ class MainWindow(QMainWindow):
             self.scene.load_pieces_from_folder(folder)
             pieces = self.scene.get_loaded_pieces()
             self.palette.load_pieces(pieces)
-            self.statusBar().showMessage(f"Loaded {len(pieces)} pieces from {folder}")
+            count = len(pieces)
+            self.statusBar().showMessage(f"Loaded {count} pieces from {folder}")
 
     def _on_export(self):
         dlg = ExportDialog(self)
@@ -244,19 +222,25 @@ class MainWindow(QMainWindow):
         else:
             # Raster formats: PNG, JPEG, BMP
             image = self.scene.export_to_image(dpi)
+
             if params.get("transparent_bg") and fmt == "PNG":
-                pass  # Image already has white bg, user could want transparent
-            image.save(path, fmt)
+                # Re-render with transparent background
+                image = self.scene.export_to_image(dpi, transparent=True)
+
+            # Qt uses "JPG" not "JPEG" for save format
+            save_fmt = "JPG" if fmt == "JPEG" else fmt
+            ok = image.save(path, save_fmt)
+            if not ok:
+                raise RuntimeError(f"Failed to save image as {fmt} to: {path}")
 
     def _export_pdf(self, path: str, dpi: int):
-        from PyQt6.QtGui import QPdfWriter, QPainter
+        from PyQt6.QtGui import QPdfWriter, QPainter, QPageSize
         from PyQt6.QtCore import QMarginsF, QSizeF
 
         rect = self.scene.board_bounding_rect()
         writer = QPdfWriter(path)
         writer.setResolution(dpi)
 
-        from PyQt6.QtGui import QPageSize
         page_size = QPageSize(
             QSizeF(rect.width() / 96.0 * 25.4, rect.height() / 96.0 * 25.4),
             QPageSize.Unit.Millimeter

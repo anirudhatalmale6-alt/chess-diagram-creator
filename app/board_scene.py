@@ -48,16 +48,37 @@ class ChessBoardScene(QGraphicsScene):
         return dict(self._loaded_piece_paths)
 
     def load_pieces_from_folder(self, folder: str):
-        """Load piece images from a user-selected folder."""
+        """Load piece images from a user-selected folder.
+
+        Supports filenames like: wK.svg, bQ.png, white_king.svg, etc.
+        Also accepts any SVG/PNG file — user can use them as custom pieces.
+        """
         self._loaded_piece_paths.clear()
+
+        # Common naming patterns to recognize piece types
+        name_map = {
+            'white_king': 'wK', 'white_queen': 'wQ', 'white_rook': 'wR',
+            'white_bishop': 'wB', 'white_knight': 'wN', 'white_pawn': 'wP',
+            'black_king': 'bK', 'black_queen': 'bQ', 'black_rook': 'bR',
+            'black_bishop': 'bB', 'black_knight': 'bN', 'black_pawn': 'bP',
+            'wking': 'wK', 'wqueen': 'wQ', 'wrook': 'wR',
+            'wbishop': 'wB', 'wknight': 'wN', 'wpawn': 'wP',
+            'bking': 'bK', 'bqueen': 'bQ', 'brook': 'bR',
+            'bbishop': 'bB', 'bknight': 'bN', 'bpawn': 'bP',
+        }
+
         for fname in os.listdir(folder):
             name, ext = os.path.splitext(fname)
-            if ext.lower() in ('.svg', '.png'):
+            if ext.lower() in ('.svg', '.png', '.jpg', '.jpeg', '.bmp'):
                 path = os.path.join(folder, fname)
-                # Try to infer piece type from filename
+                # Standard 2-char names: wK, bQ, etc.
                 if len(name) == 2 and name[0] in 'wb' and name[1] in 'KQRBNP':
                     self._loaded_piece_paths[name] = path
+                # Check common naming patterns
+                elif name.lower() in name_map:
+                    self._loaded_piece_paths[name_map[name.lower()]] = path
                 else:
+                    # Accept any image file with its filename as key
                     self._loaded_piece_paths[name] = path
         self.pieces_dir = folder
 
@@ -87,12 +108,19 @@ class ChessBoardScene(QGraphicsScene):
         self._border_item.setZValue(-1)
         self.addItem(self._border_item)
 
-        # Create cells
+        # Create cells — use explicit QColor objects
+        light_qc = QColor(s.light_color)
+        dark_qc = QColor(s.dark_color)
+        if not light_qc.isValid():
+            light_qc = QColor(240, 217, 181)
+        if not dark_qc.isValid():
+            dark_qc = QColor(181, 136, 99)
+
         for row in range(8):
             for col in range(8):
                 is_light = (row + col) % 2 == 0
                 cell = CellItem(row, col, sq, is_light)
-                cell.set_color(QColor(s.light_color if is_light else s.dark_color))
+                cell.set_color(light_qc if is_light else dark_qc)
                 cell.setPos(ox + col * sq, oy + row * sq)
                 cell.setZValue(0)
                 self.addItem(cell)
@@ -181,11 +209,13 @@ class ChessBoardScene(QGraphicsScene):
         piece.board_row = row
         piece.board_col = col
 
-        # Center piece on cell
+        # Center piece on cell — use logical pixmap size
         cell = self._cells[row][col]
         if cell:
-            cx = cell.pos().x() + (sq - piece_size) / 2
-            cy = cell.pos().y() + (sq - piece_size) / 2
+            pm = piece.pixmap()
+            logical_size = pm.width() / pm.devicePixelRatio()
+            cx = cell.pos().x() + (sq - logical_size) / 2
+            cy = cell.pos().y() + (sq - logical_size) / 2
             piece.setPos(cx, cy)
 
         self.addItem(piece)
@@ -237,7 +267,9 @@ class ChessBoardScene(QGraphicsScene):
         self._pieces[(row, col)] = piece
 
         sq = self.settings.square_size
-        piece_size = piece.pixmap().width()
+        pm = piece.pixmap()
+        # Use logical size (account for devicePixelRatio)
+        piece_size = pm.width() / pm.devicePixelRatio()
         cell = self._cells[row][col]
         if cell:
             cx = cell.pos().x() + (sq - piece_size) / 2
@@ -283,7 +315,7 @@ class ChessBoardScene(QGraphicsScene):
             (max_y - min_y) + 2 * border + coord_margin + 8
         )
 
-    def export_to_image(self, dpi: int = 300) -> QImage:
+    def export_to_image(self, dpi: int = 300, transparent: bool = False) -> QImage:
         """Render the board to a QImage at specified DPI."""
         scale = dpi / 96.0
         rect = self.board_bounding_rect()
@@ -293,7 +325,10 @@ class ChessBoardScene(QGraphicsScene):
         image = QImage(width, height, QImage.Format.Format_ARGB32)
         image.setDotsPerMeterX(int(dpi * 39.3701))
         image.setDotsPerMeterY(int(dpi * 39.3701))
-        image.fill(Qt.GlobalColor.white)
+        if transparent:
+            image.fill(Qt.GlobalColor.transparent)
+        else:
+            image.fill(Qt.GlobalColor.white)
 
         # Temporarily upscale SVG pieces
         original_pixmaps = {}
@@ -339,12 +374,13 @@ class ChessBoardScene(QGraphicsScene):
         """Update all cell colors."""
         self.settings.light_color = light
         self.settings.dark_color = dark
+        light_qc = QColor(light)
+        dark_qc = QColor(dark)
         for row in range(8):
             for col in range(8):
                 cell = self._cells[row][col]
                 if cell:
-                    color = QColor(light if cell.is_light else dark)
-                    cell.set_color(color)
+                    cell.set_color(light_qc if cell.is_light else dark_qc)
 
     def update_background(self, color: str):
         """Update the scene background color."""
