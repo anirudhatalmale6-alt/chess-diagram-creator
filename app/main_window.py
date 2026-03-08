@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         sp.lightColorChanged.connect(self._on_light_color)
         sp.darkColorChanged.connect(self._on_dark_color)
         sp.backgroundColorChanged.connect(self._on_bg_color)
+        sp.backgroundTransparentChanged.connect(self._on_bg_transparent)
         sp.borderThicknessChanged.connect(self._on_border_thickness)
         sp.borderColorChanged.connect(self._on_border_color)
         sp.coordFontChanged.connect(self._on_coord_font)
@@ -318,9 +319,7 @@ class MainWindow(QMainWindow):
             self.scene._load_default_pieces()
 
         # Rebuild board with new settings
-        from PyQt6.QtGui import QBrush, QColor as QC
-        self.scene.setBackgroundBrush(
-            QBrush(QC(self.settings.background_color)))
+        self.scene._apply_background()
         self.scene.rebuild_board()
 
         # Update palette
@@ -340,6 +339,9 @@ class MainWindow(QMainWindow):
 
     def _on_bg_color(self, color):
         self.scene.update_background(color)
+
+    def _on_bg_transparent(self, transparent):
+        self.scene.update_background_transparent(transparent)
 
     def _on_border_thickness(self, val):
         self.scene.update_border(val, self.settings.border_color)

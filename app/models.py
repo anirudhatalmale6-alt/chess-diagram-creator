@@ -24,6 +24,7 @@ class BoardSettings:
     square_size: int = DEFAULT_SQUARE_SIZE
     piece_scale: float = DEFAULT_PIECE_SCALE
     coord_distance: int = 4
+    background_transparent: bool = False
     light_texture_path: str = ""
     dark_texture_path: str = ""
 

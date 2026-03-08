@@ -3,7 +3,9 @@
 import os
 import re
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsPathItem
-from PyQt6.QtGui import QColor, QPen, QBrush, QPainter, QImage, QPainterPath
+from PyQt6.QtGui import (
+    QColor, QPen, QBrush, QPainter, QImage, QPainterPath, QPixmap,
+)
 from PyQt6.QtCore import Qt, QRectF, QByteArray
 
 from .cell_item import CellItem
@@ -104,6 +106,19 @@ def _guess_piece_type(filename: str) -> str | None:
 # Board scene
 # ---------------------------------------------------------------------------
 
+def _make_checkerboard_brush(cell: int = 8) -> QBrush:
+    """Create a checkerboard QBrush to indicate transparency."""
+    size = cell * 2
+    pm = QPixmap(size, size)
+    pm.fill(QColor(255, 255, 255))
+    p = QPainter(pm)
+    grey = QColor(204, 204, 204)
+    p.fillRect(0, 0, cell, cell, grey)
+    p.fillRect(cell, cell, cell, cell, grey)
+    p.end()
+    return QBrush(pm)
+
+
 class ChessBoardScene(QGraphicsScene):
     """The chess board scene with cells, coordinates, border, and pieces."""
 
@@ -117,9 +132,17 @@ class ChessBoardScene(QGraphicsScene):
         self._border_item = None
         self._loaded_piece_paths: dict[str, str] = {}
 
-        self.setBackgroundBrush(QBrush(QColor(settings.background_color)))
+        self._apply_background()
         self._build_board()
         self._load_default_pieces()
+
+    def _apply_background(self):
+        """Set the scene background brush based on current settings."""
+        if self.settings.background_transparent:
+            self.setBackgroundBrush(_make_checkerboard_brush())
+        else:
+            self.setBackgroundBrush(
+                QBrush(QColor(self.settings.background_color)))
 
     # ---- piece loading ----------------------------------------------------
 
@@ -415,7 +438,12 @@ class ChessBoardScene(QGraphicsScene):
 
     def export_to_image(self, dpi: int = 300,
                         transparent: bool = False) -> QImage:
-        """Render the board to a QImage at the specified DPI."""
+        """Render the board to a QImage at the specified DPI.
+
+        *transparent* can be set explicitly (from export dialog) or is
+        inferred from ``settings.background_transparent``.
+        """
+        use_transparent = transparent or self.settings.background_transparent
         scale = dpi / 96.0
         rect = self.board_bounding_rect()
         width = int(rect.width() * scale)
@@ -424,16 +452,28 @@ class ChessBoardScene(QGraphicsScene):
         image = QImage(width, height, QImage.Format.Format_ARGB32)
         image.setDotsPerMeterX(int(dpi * 39.3701))
         image.setDotsPerMeterY(int(dpi * 39.3701))
-        if transparent:
+        if use_transparent:
             image.fill(Qt.GlobalColor.transparent)
         else:
             image.fill(Qt.GlobalColor.white)
+
+        # Temporarily replace the checkerboard brush so it doesn't
+        # appear in the exported image.
+        saved_brush = self.backgroundBrush()
+        if use_transparent:
+            self.setBackgroundBrush(QBrush(Qt.GlobalColor.transparent))
+        else:
+            self.setBackgroundBrush(
+                QBrush(QColor(self.settings.background_color)))
 
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         self.render(painter, QRectF(0, 0, width, height), rect)
         painter.end()
+
+        # Restore workspace brush
+        self.setBackgroundBrush(saved_brush)
 
         return image
 
@@ -470,7 +510,12 @@ class ChessBoardScene(QGraphicsScene):
 
     def update_background(self, color: str):
         self.settings.background_color = color
-        self.setBackgroundBrush(QBrush(QColor(color)))
+        if not self.settings.background_transparent:
+            self.setBackgroundBrush(QBrush(QColor(color)))
+
+    def update_background_transparent(self, transparent: bool):
+        self.settings.background_transparent = transparent
+        self._apply_background()
 
     def update_border(self, thickness: int, color: str):
         self.settings.border_thickness = thickness

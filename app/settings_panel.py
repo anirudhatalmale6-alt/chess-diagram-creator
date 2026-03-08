@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QSpinBox,
     QPushButton, QColorDialog, QComboBox, QSlider, QLabel,
-    QFontComboBox, QScrollArea,
+    QFontComboBox, QScrollArea, QCheckBox,
 )
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -47,6 +47,7 @@ class SettingsPanel(QWidget):
     lightColorChanged = pyqtSignal(str)
     darkColorChanged = pyqtSignal(str)
     backgroundColorChanged = pyqtSignal(str)
+    backgroundTransparentChanged = pyqtSignal(bool)
     borderThicknessChanged = pyqtSignal(int)
     borderColorChanged = pyqtSignal(str)
     coordFontChanged = pyqtSignal(str, int)
@@ -89,6 +90,12 @@ class SettingsPanel(QWidget):
         self.bg_btn = ColorButton(self.settings.background_color)
         self.bg_btn.colorChanged.connect(self.backgroundColorChanged.emit)
         colors_layout.addRow("Background:", self.bg_btn)
+
+        self.bg_transparent_cb = QCheckBox("Transparent background")
+        self.bg_transparent_cb.setChecked(self.settings.background_transparent)
+        self.bg_transparent_cb.toggled.connect(
+            self.backgroundTransparentChanged.emit)
+        colors_layout.addRow("", self.bg_transparent_cb)
 
         colors_group.setLayout(colors_layout)
         main_layout.addWidget(colors_group)
@@ -228,6 +235,10 @@ class SettingsPanel(QWidget):
         self.light_btn.set_color(settings.light_color)
         self.dark_btn.set_color(settings.dark_color)
         self.bg_btn.set_color(settings.background_color)
+
+        self.bg_transparent_cb.blockSignals(True)
+        self.bg_transparent_cb.setChecked(settings.background_transparent)
+        self.bg_transparent_cb.blockSignals(False)
 
         self.border_spin.blockSignals(True)
         self.border_spin.setValue(settings.border_thickness)

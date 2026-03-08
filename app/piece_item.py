@@ -17,13 +17,16 @@ class ChessPieceItem(QGraphicsItem):
 
     def __init__(self, image: QImage, piece_type: str = "",
                  source_path: str = "", is_svg: bool = False,
-                 svg_data: bytes = b"", target_size: int = 68):
+                 svg_data: bytes = b"", target_size: int = 68,
+                 original_image: QImage | None = None):
         super().__init__()
         self.piece_type = piece_type
         self.source_path = source_path
         self.is_svg = is_svg
         self.svg_data = svg_data
         self._image = image
+        # Keep the original full-resolution image for quality exports
+        self._original_image = original_image if original_image else image
         self._target_size = target_size
         self.board_row = -1
         self.board_col = -1
@@ -50,19 +53,19 @@ class ChessPieceItem(QGraphicsItem):
     @classmethod
     def from_png(cls, path: str, piece_type: str,
                  target_size: int) -> "ChessPieceItem":
-        img = QImage(path)
-        if img.isNull():
-            img = QImage(target_size, target_size,
-                         QImage.Format.Format_ARGB32)
-            img.fill(Qt.GlobalColor.red)
-        else:
-            img = img.scaled(
-                target_size, target_size,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        return cls(img, piece_type, path, is_svg=False,
-                   target_size=target_size)
+        original = QImage(path)
+        if original.isNull():
+            original = QImage(target_size, target_size,
+                              QImage.Format.Format_ARGB32)
+            original.fill(Qt.GlobalColor.red)
+        # Keep full-resolution original; scale a copy for display
+        display = original.scaled(
+            target_size, target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        return cls(display, piece_type, path, is_svg=False,
+                   target_size=target_size, original_image=original)
 
     @classmethod
     def from_file(cls, path: str, piece_type: str,
@@ -87,7 +90,9 @@ class ChessPieceItem(QGraphicsItem):
             renderer = QSvgRenderer(QByteArray(self.svg_data))
             renderer.render(painter, rect)
         else:
-            painter.drawImage(rect, self._image)
+            # Draw from original full-resolution image for maximum quality.
+            # QPainter with SmoothPixmapTransform handles down/up-scaling.
+            painter.drawImage(rect, self._original_image)
 
     # ---- helpers ---------------------------------------------------------
 
@@ -106,7 +111,8 @@ class ChessPieceItem(QGraphicsItem):
         """Return a QImage of this piece rendered at *size* px."""
         if self.is_svg and self.svg_data:
             return self._render_svg_to_image(self.svg_data, size)
-        return self._image.scaled(
+        # Scale from the original full-resolution image for best quality
+        return self._original_image.scaled(
             size, size,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
