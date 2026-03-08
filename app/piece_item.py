@@ -114,40 +114,70 @@ class ChessPieceItem(QGraphicsItem):
 
     @staticmethod
     def _remove_solid_background(image: QImage) -> QImage:
-        """Auto-detect and remove solid background via flood fill from corners.
+        """Auto-detect and remove solid background via flood fill from edges.
 
-        If all four corners share a similar opaque color, that color is treated
-        as a solid background and flood-filled to transparent.  This handles
-        chess-piece PNGs that were saved with a white (or other solid) backdrop.
+        Samples ALL pixels along the image border to find the dominant opaque
+        color.  If enough edge pixels share that color it is treated as a solid
+        background and flood-filled to transparent.  This handles chess-piece
+        PNGs saved with a white (or other solid) backdrop — even when the piece
+        extends into some corners.
         """
+        from collections import Counter
+
         img = image.convertToFormat(QImage.Format.Format_ARGB32)
         w, h = img.width(), img.height()
         if w < 4 or h < 4:
             return img
 
-        # Sample corner pixels (raw ARGB32 packed ints for speed)
-        corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
-        cpx = [img.pixel(x, y) for x, y in corners]
+        # Collect all edge pixel coordinates and values
+        edge_coords = []
+        edge_pixels = []
+        for x in range(w):                          # top + bottom rows
+            edge_coords.append((x, 0))
+            edge_pixels.append(img.pixel(x, 0))
+            edge_coords.append((x, h - 1))
+            edge_pixels.append(img.pixel(x, h - 1))
+        for y in range(1, h - 1):                   # left + right columns
+            edge_coords.append((0, y))
+            edge_pixels.append(img.pixel(0, y))
+            edge_coords.append((w - 1, y))
+            edge_pixels.append(img.pixel(w - 1, y))
 
-        ref = cpx[0]
-        ref_a = (ref >> 24) & 0xFF
-        if ref_a < 200:          # already (semi-)transparent — nothing to do
+        # Keep only opaque edge pixels
+        opaque = [(px, coord) for px, coord in zip(edge_pixels, edge_coords)
+                  if ((px >> 24) & 0xFF) >= 200]
+        if not opaque:
+            return img          # all edges transparent — nothing to do
+
+        # Find dominant exact pixel value among opaque edges
+        counter = Counter(px for px, _ in opaque)
+        most_common_px, count = counter.most_common(1)[0]
+        if count < len(opaque) * 0.25:
+            return img          # no clear dominant color
+
+        ref_r = (most_common_px >> 16) & 0xFF
+        ref_g = (most_common_px >> 8) & 0xFF
+        ref_b = most_common_px & 0xFF
+
+        threshold = 40
+
+        # Gather all matching edge pixels as flood-fill seeds
+        seeds = []
+        for px, (x, y) in opaque:
+            pr = (px >> 16) & 0xFF
+            pg = (px >> 8) & 0xFF
+            pb = px & 0xFF
+            if (abs(pr - ref_r) <= threshold and
+                    abs(pg - ref_g) <= threshold and
+                    abs(pb - ref_b) <= threshold):
+                seeds.append((x, y))
+
+        if not seeds:
             return img
-        ref_r = (ref >> 16) & 0xFF
-        ref_g = (ref >> 8) & 0xFF
-        ref_b = ref & 0xFF
 
-        threshold = 30
-        for c in cpx[1:]:
-            if (abs(((c >> 16) & 0xFF) - ref_r) > threshold or
-                    abs(((c >> 8) & 0xFF) - ref_g) > threshold or
-                    abs((c & 0xFF) - ref_b) > threshold or
-                    ((c >> 24) & 0xFF) < 200):
-                return img        # corners differ — no uniform background
-
-        # Flood-fill from all four corners
-        visited = bytearray(w * h)          # flat array, 0 = not visited
-        q = deque(corners)
+        # Flood-fill from all seed edge pixels
+        visited = bytearray(w * h)
+        q = deque(seeds)
         transparent = 0x00000000
 
         while q:
