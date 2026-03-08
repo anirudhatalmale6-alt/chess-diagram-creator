@@ -90,9 +90,21 @@ class ChessPieceItem(QGraphicsItem):
             renderer = QSvgRenderer(QByteArray(self.svg_data))
             renderer.render(painter, rect)
         else:
-            # Draw from original full-resolution image for maximum quality.
-            # QPainter with SmoothPixmapTransform handles down/up-scaling.
-            painter.drawImage(rect, self._original_image)
+            # Draw from original full-resolution image, preserving aspect
+            # ratio so non-square images are not stretched.
+            img = self._original_image
+            iw, ih = img.width(), img.height()
+            if iw > 0 and ih > 0 and iw != ih:
+                ts = self._target_size
+                aspect = iw / ih
+                if aspect > 1:  # wider than tall
+                    dw, dh = ts, ts / aspect
+                else:           # taller than wide
+                    dw, dh = ts * aspect, ts
+                dest = QRectF((ts - dw) / 2, (ts - dh) / 2, dw, dh)
+                painter.drawImage(dest, img)
+            else:
+                painter.drawImage(rect, img)
 
     # ---- helpers ---------------------------------------------------------
 
