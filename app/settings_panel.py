@@ -57,6 +57,8 @@ class SettingsPanel(QWidget):
     pieceScaleChanged = pyqtSignal(float)
     coordDistanceChanged = pyqtSignal(int)
     pieceTypeScaleChanged = pyqtSignal(str, int)  # role, percentage
+    pieceOffsetVChanged = pyqtSignal(int)
+    pieceOffsetHChanged = pyqtSignal(int)
     lightTextureRequested = pyqtSignal()
     darkTextureRequested = pyqtSignal()
     clearTexturesRequested = pyqtSignal()
@@ -213,6 +215,29 @@ class SettingsPanel(QWidget):
         piece_group.setLayout(piece_layout)
         main_layout.addWidget(piece_group)
 
+        # --- Piece Position Offset ---
+        offset_group = QGroupBox("Piece Position")
+        offset_layout = QFormLayout()
+
+        self.offset_v_spin = QSpinBox()
+        self.offset_v_spin.setRange(-30, 30)
+        self.offset_v_spin.setSuffix(" px")
+        self.offset_v_spin.setValue(self.settings.piece_offset_v)
+        self.offset_v_spin.setToolTip("Shift pieces up (negative) or down (positive)")
+        self.offset_v_spin.valueChanged.connect(self.pieceOffsetVChanged.emit)
+        offset_layout.addRow("Vertical offset:", self.offset_v_spin)
+
+        self.offset_h_spin = QSpinBox()
+        self.offset_h_spin.setRange(-30, 30)
+        self.offset_h_spin.setSuffix(" px")
+        self.offset_h_spin.setValue(self.settings.piece_offset_h)
+        self.offset_h_spin.setToolTip("Shift pieces left (negative) or right (positive)")
+        self.offset_h_spin.valueChanged.connect(self.pieceOffsetHChanged.emit)
+        offset_layout.addRow("Horizontal offset:", self.offset_h_spin)
+
+        offset_group.setLayout(offset_layout)
+        main_layout.addWidget(offset_group)
+
         # --- Piece Heights (per-type) ---
         heights_group = QGroupBox("Piece Heights")
         heights_layout = QFormLayout()
@@ -300,3 +325,11 @@ class SettingsPanel(QWidget):
             spin.blockSignals(True)
             spin.setValue(settings.piece_type_scales.get(role, 100))
             spin.blockSignals(False)
+
+        self.offset_v_spin.blockSignals(True)
+        self.offset_v_spin.setValue(settings.piece_offset_v)
+        self.offset_v_spin.blockSignals(False)
+
+        self.offset_h_spin.blockSignals(True)
+        self.offset_h_spin.setValue(settings.piece_offset_h)
+        self.offset_h_spin.blockSignals(False)

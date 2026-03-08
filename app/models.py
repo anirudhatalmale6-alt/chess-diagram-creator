@@ -31,6 +31,8 @@ class BoardSettings:
         "K": 100, "Q": 100, "R": 100,
         "B": 100, "N": 100, "P": 100,
     })
+    piece_offset_v: int = 0   # vertical offset in px (negative=up)
+    piece_offset_h: int = 0   # horizontal offset in px (negative=left)
     light_texture_path: str = ""
     dark_texture_path: str = ""
 

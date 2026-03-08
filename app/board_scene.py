@@ -344,8 +344,8 @@ class ChessBoardScene(QGraphicsScene):
 
         cell = self._cells[row][col]
         if cell:
-            cx = cell.pos().x() + (sq - piece_size) / 2
-            cy = cell.pos().y() + (sq - piece_size)  # bottom-aligned
+            cx = cell.pos().x() + (sq - piece_size) / 2 + self.settings.piece_offset_h
+            cy = cell.pos().y() + (sq - piece_size) + self.settings.piece_offset_v
             piece.setPos(cx, cy)
 
         self.addItem(piece)
@@ -391,8 +391,8 @@ class ChessBoardScene(QGraphicsScene):
         ps = piece.target_size
         cell = self._cells[row][col]
         if cell:
-            cx = cell.pos().x() + (sq - ps) / 2
-            cy = cell.pos().y() + (sq - ps)  # bottom-aligned
+            cx = cell.pos().x() + (sq - ps) / 2 + self.settings.piece_offset_h
+            cy = cell.pos().y() + (sq - ps) + self.settings.piece_offset_v
             piece.setPos(cx, cy)
 
     def _pos_to_square(self, pos):
@@ -553,6 +553,14 @@ class ChessBoardScene(QGraphicsScene):
     def update_piece_type_scale(self, role: str, pct: int):
         """Update the height percentage for a specific piece role."""
         self.settings.piece_type_scales[role] = pct
+        self._replace_all_pieces()
+
+    def update_piece_offset_v(self, val: int):
+        self.settings.piece_offset_v = val
+        self._replace_all_pieces()
+
+    def update_piece_offset_h(self, val: int):
+        self.settings.piece_offset_h = val
         self._replace_all_pieces()
 
     def _replace_all_pieces(self):

@@ -95,6 +95,8 @@ class MainWindow(QMainWindow):
         sp.squareSizeChanged.connect(self._on_square_size)
         sp.pieceScaleChanged.connect(self._on_piece_scale)
         sp.pieceTypeScaleChanged.connect(self._on_piece_type_scale)
+        sp.pieceOffsetVChanged.connect(self.scene.update_piece_offset_v)
+        sp.pieceOffsetHChanged.connect(self.scene.update_piece_offset_h)
         sp.lightTextureRequested.connect(lambda: self._load_texture(True))
         sp.darkTextureRequested.connect(lambda: self._load_texture(False))
         sp.clearTexturesRequested.connect(self._clear_textures)

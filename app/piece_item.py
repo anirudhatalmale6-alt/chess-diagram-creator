@@ -116,17 +116,17 @@ class ChessPieceItem(QGraphicsItem):
     def _align_content_bottom(image: QImage) -> QImage:
         """Shift visible content to bottom-center of the image.
 
-        Detects the actual piece shape bounds via the alpha channel and
-        repositions it so it is centered horizontally and touching the
-        bottom edge.  Uses raw pixel data for speed.  Images that are
-        fully opaque (no alpha) or already aligned are returned as-is.
+        Detects the piece shape bounds and repositions it so it is centered
+        horizontally and touching the bottom edge.  Handles both:
+        - Transparent PNGs (uses alpha channel)
+        - Opaque PNGs with solid backgrounds (uses color difference)
+        Uses raw pixel data for speed.
         """
         img = image.convertToFormat(QImage.Format.Format_ARGB32)
         w, h = img.width(), img.height()
         if w < 2 or h < 2:
             return img
 
-        # Access raw pixel data (BGRA on little-endian; alpha at byte +3)
         try:
             ptr = img.constBits()
             ptr.setsize(w * h * 4)
@@ -135,15 +135,42 @@ class ChessPieceItem(QGraphicsItem):
             return img
 
         stride = w * 4
-        ALPHA_MIN = 10
 
-        # --- find top (first row with visible pixel) ---
+        # Determine mode: check if edges have any transparent pixels
+        # Format_ARGB32 on little-endian: bytes are B, G, R, A per pixel
+        has_transparency = False
+        for x in range(w):
+            if data[x * 4 + 3] < 200 or data[(h - 1) * stride + x * 4 + 3] < 200:
+                has_transparency = True
+                break
+        if not has_transparency:
+            for y in range(h):
+                if data[y * stride + 3] < 200 or data[y * stride + (w - 1) * 4 + 3] < 200:
+                    has_transparency = True
+                    break
+
+        if has_transparency:
+            # Alpha-based detection
+            ALPHA_MIN = 10
+            def is_content(base, x):
+                return data[base + x * 4 + 3] > ALPHA_MIN
+        else:
+            # Color-based detection: use top-left corner as background ref
+            bg_b, bg_g, bg_r = data[0], data[1], data[2]
+            THR = 30
+            def is_content(base, x):
+                off = base + x * 4
+                return (abs(data[off] - bg_b) > THR or
+                        abs(data[off + 1] - bg_g) > THR or
+                        abs(data[off + 2] - bg_r) > THR)
+
+        # --- find top (first row with content pixel) ---
         top = 0
         found_top = False
         for y in range(h):
             base = y * stride
             for x in range(w):
-                if data[base + x * 4 + 3] > ALPHA_MIN:
+                if is_content(base, x):
                     top = y
                     found_top = True
                     break
@@ -151,15 +178,15 @@ class ChessPieceItem(QGraphicsItem):
                 break
 
         if not found_top:
-            return img                 # fully transparent image
+            return img
 
-        # --- find bottom (last row with visible pixel) ---
+        # --- find bottom (last row with content pixel) ---
         bottom = h - 1
         for y in range(h - 1, -1, -1):
             base = y * stride
             found = False
             for x in range(w):
-                if data[base + x * 4 + 3] > ALPHA_MIN:
+                if is_content(base, x):
                     bottom = y
                     found = True
                     break
@@ -172,11 +199,11 @@ class ChessPieceItem(QGraphicsItem):
         for y in range(top, bottom + 1):
             base = y * stride
             for x in range(left):
-                if data[base + x * 4 + 3] > ALPHA_MIN:
+                if is_content(base, x):
                     left = x
                     break
             for x in range(w - 1, right, -1):
-                if data[base + x * 4 + 3] > ALPHA_MIN:
+                if is_content(base, x):
                     right = x
                     break
 
@@ -185,7 +212,7 @@ class ChessPieceItem(QGraphicsItem):
         content_cx = (left + right) / 2.0
         image_cx = (w - 1) / 2.0
         if bottom_pad <= 1 and abs(content_cx - image_cx) <= 2:
-            return img                 # already properly aligned
+            return img
 
         content_w = right - left + 1
         content_h = bottom - top + 1
@@ -193,7 +220,7 @@ class ChessPieceItem(QGraphicsItem):
         new_y = h - content_h
 
         new_img = QImage(w, h, QImage.Format.Format_ARGB32)
-        new_img.fill(0)                # fully transparent
+        new_img.fill(0)
         p = QPainter(new_img)
         p.drawImage(
             QRectF(new_x, new_y, content_w, content_h),
