@@ -6,7 +6,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('assets/pieces/default/*.svg', 'assets/pieces/default'),
-        ('assets/icons/*', 'assets/icons'),
+        ('assets/icons/app_icon.png', 'assets/icons'),
         ('assets/LICENSE_pieces.txt', 'assets'),
     ],
     hiddenimports=[
