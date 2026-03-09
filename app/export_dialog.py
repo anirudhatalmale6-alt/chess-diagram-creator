@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QFileDialog, QHBoxLayout, QLineEdit, QLabel,
     QGroupBox, QMessageBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 
 
 class ExportDialog(QDialog):
@@ -16,7 +16,9 @@ class ExportDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Export Diagram")
         self.setMinimumWidth(400)
-        self._default_dir = default_dir or os.path.expanduser("~")
+        self._settings = QSettings("ChessDiagramCreator", "ChessDiagramCreator")
+        saved_dir = self._settings.value("export/last_directory", "")
+        self._default_dir = saved_dir or default_dir or os.path.expanduser("~")
         self._result_path = ""
         self._result_format = "PNG"
         self._result_dpi = 300
@@ -106,6 +108,8 @@ class ExportDialog(QDialog):
         )
         if path:
             self.path_edit.setText(path)
+            self._default_dir = os.path.dirname(path)
+            self._settings.setValue("export/last_directory", self._default_dir)
 
     def _export(self):
         path = self.path_edit.text().strip()
@@ -115,6 +119,7 @@ class ExportDialog(QDialog):
         self._result_path = path
         self._result_format = self.format_combo.currentText()
         self._result_dpi = int(self.dpi_combo.currentText())
+        self._settings.setValue("export/last_directory", os.path.dirname(path))
         self.accept()
 
     def get_result(self):

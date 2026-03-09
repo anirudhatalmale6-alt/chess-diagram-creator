@@ -134,7 +134,7 @@ class SettingsPanel(QWidget):
         coord_layout.addRow("Font:", self.coord_font)
 
         self.coord_size_spin = QSpinBox()
-        self.coord_size_spin.setRange(6, 60)
+        self.coord_size_spin.setRange(6, 120)
         self.coord_size_spin.setValue(self.settings.coord_size)
         self.coord_size_spin.valueChanged.connect(
             lambda v: self.coordFontChanged.emit(
