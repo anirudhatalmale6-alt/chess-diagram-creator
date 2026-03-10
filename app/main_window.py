@@ -100,6 +100,10 @@ class MainWindow(QMainWindow):
         sp.lightTextureRequested.connect(lambda: self._load_texture(True))
         sp.darkTextureRequested.connect(lambda: self._load_texture(False))
         sp.clearTexturesRequested.connect(self._clear_textures)
+        sp.annotationModeChanged.connect(self._on_annotation_mode)
+        sp.annotationColorChanged.connect(self._on_annotation_color)
+        sp.annotationOpacityChanged.connect(self.scene.set_annotation_opacity)
+        sp.clearAnnotationsRequested.connect(self.scene.clear_annotations)
 
     def _create_actions(self):
         self._start_action = QAction("Start Position", self)
@@ -378,6 +382,18 @@ class MainWindow(QMainWindow):
 
     def _on_piece_type_scale(self, role, pct):
         self.scene.update_piece_type_scale(role, pct)
+
+    def _on_annotation_mode(self, mode):
+        self.scene.set_annotation_mode(mode)
+        if mode:
+            self.statusBar().showMessage(
+                f"Annotation mode: {mode} — left-click to draw, right-click to remove")
+        else:
+            self.statusBar().showMessage("Annotation mode off")
+
+    def _on_annotation_color(self, color):
+        from PyQt6.QtGui import QColor
+        self.scene.set_annotation_color(QColor(color))
 
     def _load_texture(self, is_light: bool):
         path, _ = QFileDialog.getOpenFileName(

@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QFontComboBox, QScrollArea, QCheckBox,
 )
 from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSettings
 
 
 class ColorButton(QPushButton):
@@ -62,6 +62,10 @@ class SettingsPanel(QWidget):
     lightTextureRequested = pyqtSignal()
     darkTextureRequested = pyqtSignal()
     clearTexturesRequested = pyqtSignal()
+    annotationModeChanged = pyqtSignal(str)
+    annotationColorChanged = pyqtSignal(str)
+    annotationOpacityChanged = pyqtSignal(float)
+    clearAnnotationsRequested = pyqtSignal()
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -258,6 +262,52 @@ class SettingsPanel(QWidget):
         heights_group.setLayout(heights_layout)
         main_layout.addWidget(heights_group)
 
+        # --- Export Folder ---
+        export_group = QGroupBox("Export Folder")
+        export_layout = QVBoxLayout()
+
+        self._qsettings = QSettings("ChessDiagramCreator", "ChessDiagramCreator")
+        saved_export = self._qsettings.value("export/last_directory", "")
+        self._export_path_label = QLabel(saved_export or "Not set")
+        self._export_path_label.setWordWrap(True)
+        self._export_path_label.setStyleSheet("color: #666; font-size: 11px;")
+        export_layout.addWidget(self._export_path_label)
+
+        set_export_btn = QPushButton("Set Export Folder...")
+        set_export_btn.clicked.connect(self._on_set_export_folder)
+        export_layout.addWidget(set_export_btn)
+
+        export_group.setLayout(export_layout)
+        main_layout.addWidget(export_group)
+
+        # --- Annotations ---
+        ann_group = QGroupBox("Annotations")
+        ann_layout = QFormLayout()
+
+        self.ann_mode_combo = QComboBox()
+        self.ann_mode_combo.addItems(["Off", "Arrow", "Circle", "X", "Square"])
+        self.ann_mode_combo.currentTextChanged.connect(self._on_ann_mode)
+        ann_layout.addRow("Draw:", self.ann_mode_combo)
+
+        self.ann_color_btn = ColorButton("#FF0000")
+        self.ann_color_btn.colorChanged.connect(self.annotationColorChanged.emit)
+        ann_layout.addRow("Color:", self.ann_color_btn)
+
+        self.ann_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ann_opacity_slider.setRange(10, 100)
+        self.ann_opacity_slider.setValue(70)
+        self.ann_opacity_label = QLabel("70%")
+        self.ann_opacity_slider.valueChanged.connect(self._on_ann_opacity)
+        ann_layout.addRow("Opacity:", self.ann_opacity_slider)
+        ann_layout.addRow("", self.ann_opacity_label)
+
+        clear_ann_btn = QPushButton("Clear All Annotations")
+        clear_ann_btn.clicked.connect(self.clearAnnotationsRequested.emit)
+        ann_layout.addRow(clear_ann_btn)
+
+        ann_group.setLayout(ann_layout)
+        main_layout.addWidget(ann_group)
+
         main_layout.addStretch()
 
         scroll.setWidget(container)
@@ -272,6 +322,24 @@ class SettingsPanel(QWidget):
     def _on_piece_scale(self, value):
         self.piece_scale_label.setText(f"{value}%")
         self.pieceScaleChanged.emit(value / 100.0)
+
+    def _on_ann_mode(self, text):
+        mode_map = {"Off": "", "Arrow": "arrow", "Circle": "circle",
+                    "X": "x", "Square": "square"}
+        self.annotationModeChanged.emit(mode_map.get(text, ""))
+
+    def _on_ann_opacity(self, value):
+        self.ann_opacity_label.setText(f"{value}%")
+        self.annotationOpacityChanged.emit(value / 100.0)
+
+    def _on_set_export_folder(self):
+        from PyQt6.QtWidgets import QFileDialog
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Export Folder",
+            self._qsettings.value("export/last_directory", ""))
+        if folder:
+            self._qsettings.setValue("export/last_directory", folder)
+            self._export_path_label.setText(folder)
 
     def update_from_settings(self, settings):
         """Update all UI widgets to reflect the given settings.

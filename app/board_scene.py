@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt, QRectF, QByteArray
 from .cell_item import CellItem
 from .coordinate_item import CoordinateItem
 from .piece_item import ChessPieceItem
+from .annotation_item import AnnotationItem
 from .models import BoardSettings
 from .constants import (
     FILES, RANKS, STARTING_POSITION, MIME_PIECE_TYPE,
@@ -131,6 +132,14 @@ class ChessBoardScene(QGraphicsScene):
         self._coord_items: list = []
         self._border_item = None
         self._loaded_piece_paths: dict[str, str] = {}
+
+        # Annotations
+        self._annotations: list[AnnotationItem] = []
+        self._annotation_mode: str = ""  # "", "arrow", "circle", "x", "square"
+        self._annotation_color = QColor(255, 0, 0)
+        self._annotation_opacity = 0.7
+        self._arrow_start_pos = None
+        self._arrow_start_rc = None
 
         self._apply_background()
         self._build_board()
@@ -313,9 +322,32 @@ class ChessBoardScene(QGraphicsScene):
             saved_pieces[(r, c)] = piece.piece_type
             self.removeItem(piece)
         self._pieces.clear()
+
+        # Save texture pixmaps before cells are destroyed
+        saved_light_texture = None
+        saved_dark_texture = None
+        for row in range(8):
+            for col in range(8):
+                cell = self._cells[row][col]
+                if cell and cell._texture_pixmap:
+                    if cell.is_light:
+                        saved_light_texture = cell._texture_pixmap
+                    else:
+                        saved_dark_texture = cell._texture_pixmap
+
         self._build_board()
+
+        # Restore textures
+        if saved_light_texture:
+            self.set_cell_texture(True, saved_light_texture)
+        if saved_dark_texture:
+            self.set_cell_texture(False, saved_dark_texture)
+
         for (r, c), ptype in saved_pieces.items():
             self.place_piece(ptype, r, c)
+
+        # Rebuild annotations at new positions/sizes
+        self._rebuild_annotations()
 
     # ---- piece placement --------------------------------------------------
 
@@ -581,6 +613,104 @@ class ChessBoardScene(QGraphicsScene):
                     else:
                         cell.clear_texture()
 
+    # ---- annotations -------------------------------------------------------
+
+    def set_annotation_mode(self, mode: str):
+        """Set annotation drawing mode: 'arrow', 'circle', 'x', 'square', or '' to disable."""
+        self._annotation_mode = mode
+
+    def set_annotation_color(self, color: QColor):
+        self._annotation_color = color
+
+    def set_annotation_opacity(self, opacity: float):
+        self._annotation_opacity = opacity
+
+    def clear_annotations(self):
+        for ann in self._annotations:
+            self.removeItem(ann)
+        self._annotations.clear()
+
+    def _add_annotation_at(self, row: int, col: int):
+        """Add a circle / x / square annotation at the given cell."""
+        cell = self._cells[row][col]
+        if not cell:
+            return
+        sq = self.settings.square_size
+        ann = AnnotationItem(
+            self._annotation_mode, self._annotation_color,
+            self._annotation_opacity, sq)
+        ann.start_row = row
+        ann.start_col = col
+        ann.end_row = row
+        ann.end_col = col
+        ann.setPos(cell.pos())
+        self.addItem(ann)
+        self._annotations.append(ann)
+
+    def _add_arrow(self, r1, c1, r2, c2):
+        """Add an arrow annotation from cell (r1,c1) to cell (r2,c2)."""
+        cell1 = self._cells[r1][c1]
+        cell2 = self._cells[r2][c2]
+        if not cell1 or not cell2:
+            return
+        sq = self.settings.square_size
+        # Arrow starts from center of source cell
+        sx = cell1.pos().x() + sq / 2
+        sy = cell1.pos().y() + sq / 2
+        ex = cell2.pos().x() + sq / 2 - sx
+        ey = cell2.pos().y() + sq / 2 - sy
+
+        from PyQt6.QtCore import QPointF
+        ann = AnnotationItem(
+            "arrow", self._annotation_color,
+            self._annotation_opacity, sq,
+            end_point=QPointF(ex, ey))
+        ann.start_row = r1
+        ann.start_col = c1
+        ann.end_row = r2
+        ann.end_col = c2
+        ann.setPos(sx, sy)
+        self.addItem(ann)
+        self._annotations.append(ann)
+
+    def _rebuild_annotations(self):
+        """Recreate all annotations with current cell positions/sizes."""
+        saved = []
+        for ann in self._annotations:
+            saved.append((ann.shape, ann.start_row, ann.start_col,
+                          ann.end_row, ann.end_col,
+                          QColor(ann.color), ann._opacity))
+            self.removeItem(ann)
+        self._annotations.clear()
+
+        sq = self.settings.square_size
+        for shape, r1, c1, r2, c2, color, opacity in saved:
+            if shape == "arrow":
+                cell1 = self._cells[r1][c1]
+                cell2 = self._cells[r2][c2]
+                if not cell1 or not cell2:
+                    continue
+                sx = cell1.pos().x() + sq / 2
+                sy = cell1.pos().y() + sq / 2
+                ex = cell2.pos().x() + sq / 2 - sx
+                ey = cell2.pos().y() + sq / 2 - sy
+                from PyQt6.QtCore import QPointF
+                ann = AnnotationItem("arrow", color, opacity, sq,
+                                     end_point=QPointF(ex, ey))
+                ann.start_row, ann.start_col = r1, c1
+                ann.end_row, ann.end_col = r2, c2
+                ann.setPos(sx, sy)
+            else:
+                cell = self._cells[r1][c1]
+                if not cell:
+                    continue
+                ann = AnnotationItem(shape, color, opacity, sq)
+                ann.start_row, ann.start_col = r1, c1
+                ann.end_row, ann.end_col = r1, c1
+                ann.setPos(cell.pos())
+            self.addItem(ann)
+            self._annotations.append(ann)
+
     # ---- drag & drop from palette -----------------------------------------
 
     def dragEnterEvent(self, event):
@@ -612,6 +742,37 @@ class ChessBoardScene(QGraphicsScene):
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
             if row is not None:
+                if self._annotation_mode:
+                    # Remove any annotation at this cell
+                    for ann in list(self._annotations):
+                        if ann.start_row == row and ann.start_col == col:
+                            self.removeItem(ann)
+                            self._annotations.remove(ann)
+                    return
                 self.remove_piece(row, col)
                 return
+        if event.button() == Qt.MouseButton.LeftButton and self._annotation_mode:
+            pos = event.scenePos()
+            row, col = self._pos_to_square(pos)
+            if row is not None:
+                if self._annotation_mode == "arrow":
+                    self._arrow_start_pos = pos
+                    self._arrow_start_rc = (row, col)
+                else:
+                    self._add_annotation_at(row, col)
+                return
         super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._annotation_mode == "arrow"
+                and self._arrow_start_rc is not None):
+            pos = event.scenePos()
+            row, col = self._pos_to_square(pos)
+            r1, c1 = self._arrow_start_rc
+            if row is not None and (row != r1 or col != c1):
+                self._add_arrow(r1, c1, row, col)
+            self._arrow_start_pos = None
+            self._arrow_start_rc = None
+            return
+        super().mouseReleaseEvent(event)
