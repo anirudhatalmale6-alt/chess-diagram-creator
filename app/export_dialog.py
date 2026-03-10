@@ -62,10 +62,14 @@ class ExportDialog(QDialog):
         options_group.setLayout(opts_layout)
         layout.addWidget(options_group)
 
-        # File path
+        # File path — pre-fill with saved folder + default filename
         path_layout = QHBoxLayout()
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("Select output file...")
+        saved_dir = self._settings.value("export/last_directory", "")
+        if saved_dir and os.path.isdir(saved_dir):
+            fmt = self.format_combo.currentText().lower()
+            self.path_edit.setText(os.path.join(saved_dir, f"diagram.{fmt}"))
         path_layout.addWidget(self.path_edit)
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self._browse)
@@ -116,6 +120,13 @@ class ExportDialog(QDialog):
         if not path:
             QMessageBox.warning(self, "Export", "Please select an output file.")
             return
+        # Auto-increment filename if it already exists
+        if os.path.exists(path):
+            base, ext = os.path.splitext(path)
+            counter = 1
+            while os.path.exists(f"{base}_{counter}{ext}"):
+                counter += 1
+            path = f"{base}_{counter}{ext}"
         self._result_path = path
         self._result_format = self.format_combo.currentText()
         self._result_dpi = int(self.dpi_combo.currentText())
