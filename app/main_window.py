@@ -314,6 +314,9 @@ class MainWindow(QMainWindow):
                      transparent: bool = False):
         """Export the board as CMYK TIFF or CMYK PDF using Pillow."""
         from PIL import Image
+        from .cmyk_profile import get_naive_cmyk_profile
+
+        icc_bytes = get_naive_cmyk_profile()
 
         qimage = self.scene.export_to_image(dpi, transparent=transparent)
         pil_image = self._qimage_to_pil(qimage)
@@ -323,9 +326,10 @@ class MainWindow(QMainWindow):
             r, g, b, a = pil_image.split()
             rgb = Image.merge("RGB", (r, g, b))
             cmyk = rgb.convert("CMYK")
-            self._write_cmyk_alpha_tiff(path, cmyk, a, dpi)
+            self._write_cmyk_alpha_tiff(path, cmyk, a, dpi, icc_bytes)
         else:
             cmyk_image = pil_image.convert("CMYK")
+            cmyk_image.info["icc_profile"] = icc_bytes
             if fmt == "TIFF":
                 cmyk_image.save(path, "TIFF", dpi=(dpi, dpi))
             elif fmt == "PDF":
@@ -333,13 +337,14 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _write_cmyk_alpha_tiff(path: str, cmyk_image, alpha_channel,
-                               dpi: int):
+                               dpi: int, icc_profile: bytes = b''):
         """Write a CMYK+Alpha TIFF file.
 
         Pillow does not support a CMYKA mode, so we write a
         standard-compliant TIFF with 5 samples per pixel
         (PhotometricInterpretation=5/CMYK, ExtraSamples=2/unassociated
-        alpha) using plain struct packing.
+        alpha) using plain struct packing.  An ICC profile is embedded
+        via tag 34675 when provided.
         """
         import struct
 
@@ -362,66 +367,68 @@ class MainWindow(QMainWindow):
         strip_bytes = bytes(strip)
         strip_size = len(strip_bytes)
 
-        # --- layout ---
-        num_tags = 13
-        ifd_offset = 8                       # right after 8-byte header
-        ifd_size = 2 + num_tags * 12 + 4     # count + entries + next-ptr
+        has_icc = bool(icc_profile)
 
-        # Values that don't fit in 4 bytes are placed after the IFD
+        # --- layout ---
+        num_tags = 14 if has_icc else 13
+        ifd_offset = 8
+        ifd_size = 2 + num_tags * 12 + 4
+
         extra_offset = ifd_offset + ifd_size
 
         # BitsPerSample: 5 x SHORT = 10 bytes
         bps_off = extra_offset
         bps_data = struct.pack('<5H', 8, 8, 8, 8, 8)
 
-        # XResolution / YResolution: RATIONAL (2 x LONG each)
+        # XResolution / YResolution
         xres_off = bps_off + len(bps_data)
         xres_data = struct.pack('<II', dpi, 1)
         yres_off = xres_off + len(xres_data)
         yres_data = struct.pack('<II', dpi, 1)
 
-        strip_off = yres_off + len(yres_data)
+        # ICC profile (tag 34675, type UNDEFINED/7)
+        icc_off = yres_off + len(yres_data)
+        icc_data = icc_profile if has_icc else b''
+
+        strip_off = icc_off + len(icc_data)
 
         def _tag(tag, typ, count, value):
-            """Return 12-byte IFD entry (little-endian)."""
             hdr = struct.pack('<HHI', tag, typ, count)
-            if typ == 3 and count <= 2:          # SHORT
+            if typ == 3 and count <= 2:
                 val = struct.pack('<HH', value & 0xFFFF, 0)
-            elif typ == 4 and count == 1:        # LONG
+            elif typ == 4 and count == 1:
                 val = struct.pack('<I', value)
-            else:                                # offset
+            else:
                 val = struct.pack('<I', value)
             return hdr + val
 
         with open(path, 'wb') as f:
-            # Header
-            f.write(b'II')                               # little-endian
-            f.write(struct.pack('<H', 42))               # TIFF magic
-            f.write(struct.pack('<I', ifd_offset))       # -> IFD
+            f.write(b'II')
+            f.write(struct.pack('<H', 42))
+            f.write(struct.pack('<I', ifd_offset))
 
-            # IFD
             f.write(struct.pack('<H', num_tags))
-            f.write(_tag(256, 3, 1, width))              # ImageWidth
-            f.write(_tag(257, 3, 1, height))             # ImageLength
-            f.write(_tag(258, 3, 5, bps_off))            # BitsPerSample
-            f.write(_tag(259, 3, 1, 1))                  # Compression=none
-            f.write(_tag(262, 3, 1, 5))                  # Photometric=CMYK
-            f.write(_tag(273, 4, 1, strip_off))          # StripOffsets
-            f.write(_tag(277, 3, 1, 5))                  # SamplesPerPixel
-            f.write(_tag(278, 4, 1, height))             # RowsPerStrip
-            f.write(_tag(279, 4, 1, strip_size))         # StripByteCounts
-            f.write(_tag(282, 5, 1, xres_off))           # XResolution
-            f.write(_tag(283, 5, 1, yres_off))           # YResolution
-            f.write(_tag(296, 3, 1, 2))                  # ResUnit=inch
-            f.write(_tag(338, 3, 1, 2))                  # ExtraSamples=unassoc-alpha
-            f.write(struct.pack('<I', 0))                 # next IFD = none
+            f.write(_tag(256, 3, 1, width))
+            f.write(_tag(257, 3, 1, height))
+            f.write(_tag(258, 3, 5, bps_off))
+            f.write(_tag(259, 3, 1, 1))
+            f.write(_tag(262, 3, 1, 5))
+            f.write(_tag(273, 4, 1, strip_off))
+            f.write(_tag(277, 3, 1, 5))
+            f.write(_tag(278, 4, 1, height))
+            f.write(_tag(279, 4, 1, strip_size))
+            f.write(_tag(282, 5, 1, xres_off))
+            f.write(_tag(283, 5, 1, yres_off))
+            f.write(_tag(296, 3, 1, 2))
+            f.write(_tag(338, 3, 1, 2))
+            if has_icc:
+                f.write(_tag(34675, 7, len(icc_data), icc_off))
+            f.write(struct.pack('<I', 0))
 
-            # Extra tag data
             f.write(bps_data)
             f.write(xres_data)
             f.write(yres_data)
-
-            # Pixel data
+            f.write(icc_data)
             f.write(strip_bytes)
 
     # ---- template save / load ---------------------------------------------
