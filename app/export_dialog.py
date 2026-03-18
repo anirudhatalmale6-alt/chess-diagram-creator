@@ -32,7 +32,7 @@ class ExportDialog(QDialog):
         form = QFormLayout()
 
         self.format_combo = QComboBox()
-        self.format_combo.addItems(["PNG", "SVG", "PDF", "JPEG", "BMP"])
+        self.format_combo.addItems(["PNG", "SVG", "PDF", "JPEG", "BMP", "TIFF"])
         self.format_combo.currentTextChanged.connect(self._on_format_changed)
         form.addRow("Format:", self.format_combo)
 
@@ -40,6 +40,11 @@ class ExportDialog(QDialog):
         self.dpi_combo.addItems(["72", "150", "300", "600"])
         self.dpi_combo.setCurrentText("300")
         form.addRow("DPI:", self.dpi_combo)
+
+        self.color_mode_combo = QComboBox()
+        self.color_mode_combo.addItems(["RGB", "CMYK"])
+        self.color_mode_combo.setEnabled(False)  # Enabled only for TIFF/PDF
+        form.addRow("Color Mode:", self.color_mode_combo)
 
         settings_group.setLayout(form)
         layout.addWidget(settings_group)
@@ -68,8 +73,10 @@ class ExportDialog(QDialog):
         self.path_edit.setPlaceholderText("Select output file...")
         saved_dir = self._settings.value("export/last_directory", "")
         if saved_dir and os.path.isdir(saved_dir):
-            fmt = self.format_combo.currentText().lower()
-            self.path_edit.setText(os.path.join(saved_dir, f"diagram.{fmt}"))
+            fmt = self.format_combo.currentText()
+            ext_map = {"JPEG": "jpg", "TIFF": "tif"}
+            ext = ext_map.get(fmt, fmt.lower())
+            self.path_edit.setText(os.path.join(saved_dir, f"diagram.{ext}"))
         path_layout.addWidget(self.path_edit)
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self._browse)
@@ -91,11 +98,17 @@ class ExportDialog(QDialog):
     def _on_format_changed(self, fmt):
         self.transparent_bg.setEnabled(fmt == "PNG")
         self.dpi_combo.setEnabled(fmt != "SVG")
+        # CMYK is available for TIFF and PDF
+        self.color_mode_combo.setEnabled(fmt in ("TIFF", "PDF"))
+        if fmt not in ("TIFF", "PDF"):
+            self.color_mode_combo.setCurrentText("RGB")
         # Update file extension in path
+        ext_map = {"JPEG": "jpg", "TIFF": "tif"}
+        ext = ext_map.get(fmt, fmt.lower())
         path = self.path_edit.text()
         if path:
             base, _ = os.path.splitext(path)
-            self.path_edit.setText(f"{base}.{fmt.lower()}")
+            self.path_edit.setText(f"{base}.{ext}")
 
     def _browse(self):
         fmt = self.format_combo.currentText().lower()
@@ -105,6 +118,7 @@ class ExportDialog(QDialog):
             "pdf": "PDF Document (*.pdf)",
             "jpeg": "JPEG Image (*.jpg *.jpeg)",
             "bmp": "BMP Image (*.bmp)",
+            "tiff": "TIFF Image (*.tif *.tiff)",
         }
         filt = filters.get(fmt, "All Files (*)")
         path, _ = QFileDialog.getSaveFileName(
@@ -142,4 +156,5 @@ class ExportDialog(QDialog):
             "include_coords": self.include_coords.isChecked(),
             "include_border": self.include_border.isChecked(),
             "transparent_bg": self.transparent_bg.isChecked(),
+            "color_mode": self.color_mode_combo.currentText(),
         }

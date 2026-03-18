@@ -12,6 +12,10 @@ a = Analysis(
     hiddenimports=[
         'PyQt6.QtSvg',
         'PyQt6.QtSvgWidgets',
+        'PIL',
+        'PIL.Image',
+        'PIL.TiffImagePlugin',
+        'PIL.PdfImagePlugin',
     ],
     hookspath=[],
     hooksconfig={},

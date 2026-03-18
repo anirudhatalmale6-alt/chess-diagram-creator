@@ -2,11 +2,11 @@
 
 [Setup]
 AppName=Chess Diagram Creator
-AppVersion=1.3.1
+AppVersion=1.3.2
 AppPublisher=Chess Diagram Creator
 DefaultDirName={autopf}\ChessDiagramCreator
 DefaultGroupName=Chess Diagram Creator
-OutputBaseFilename=ChessDiagramCreator_Setup_v1.3.1
+OutputBaseFilename=ChessDiagramCreator_Setup_v1.3.2
 Compression=lzma2
 SolidCompression=yes
 OutputDir=..\dist

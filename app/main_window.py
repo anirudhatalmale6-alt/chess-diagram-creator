@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QDockWidget, QToolBar, QFileDialog,
     QMessageBox, QStatusBar, QApplication,
 )
-from PyQt6.QtGui import QAction, QIcon, QPixmap, QKeySequence
+from PyQt6.QtGui import QAction, QIcon, QImage, QPixmap, QKeySequence
 from PyQt6.QtCore import Qt
 
 from .board_scene import ChessBoardScene
@@ -243,11 +243,18 @@ class MainWindow(QMainWindow):
         path = params["path"]
         fmt = params["format"]
         dpi = params["dpi"]
+        color_mode = params.get("color_mode", "RGB")
 
         if fmt == "SVG":
             self.scene.export_to_svg(path)
+        elif color_mode == "CMYK" and fmt in ("TIFF", "PDF"):
+            self._export_cmyk(path, fmt, dpi)
         elif fmt == "PDF":
             self._export_pdf(path, dpi)
+        elif fmt == "TIFF":
+            transparent = False
+            image = self.scene.export_to_image(dpi, transparent=transparent)
+            self._save_tiff(image, path, dpi)
         else:
             transparent = params.get("transparent_bg") and fmt == "PNG"
             image = self.scene.export_to_image(dpi, transparent=transparent)
@@ -277,6 +284,39 @@ class MainWindow(QMainWindow):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.scene.render(painter, source=rect)
         painter.end()
+
+    def _qimage_to_pil(self, qimage):
+        """Convert a QImage to a PIL Image."""
+        from PIL import Image
+
+        qimage = qimage.convertToFormat(QImage.Format.Format_RGBA8888)
+        width = qimage.width()
+        height = qimage.height()
+        ptr = qimage.bits()
+        ptr.setsize(height * width * 4)
+        pil_image = Image.frombuffer(
+            "RGBA", (width, height), bytes(ptr), "raw", "RGBA", 0, 1
+        )
+        return pil_image
+
+    def _save_tiff(self, qimage, path: str, dpi: int):
+        """Save a QImage as TIFF (RGB) using Pillow."""
+        pil_image = self._qimage_to_pil(qimage)
+        pil_image = pil_image.convert("RGB")
+        pil_image.save(path, "TIFF", dpi=(dpi, dpi))
+
+    def _export_cmyk(self, path: str, fmt: str, dpi: int):
+        """Export the board as CMYK TIFF or CMYK PDF using Pillow."""
+        from PIL import Image
+
+        qimage = self.scene.export_to_image(dpi, transparent=False)
+        pil_image = self._qimage_to_pil(qimage)
+        cmyk_image = pil_image.convert("CMYK")
+
+        if fmt == "TIFF":
+            cmyk_image.save(path, "TIFF", dpi=(dpi, dpi))
+        elif fmt == "PDF":
+            cmyk_image.save(path, "PDF", resolution=dpi)
 
     # ---- template save / load ---------------------------------------------
 

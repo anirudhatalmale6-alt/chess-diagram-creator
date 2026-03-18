@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install PyQt6 PyQt6-Qt6 pyinstaller
+          pip install PyQt6 PyQt6-Qt6 pyinstaller Pillow
 
       - name: Build with PyInstaller
         run: |
