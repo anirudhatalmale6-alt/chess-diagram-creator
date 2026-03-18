@@ -61,7 +61,7 @@ class ExportDialog(QDialog):
         self.include_border.setChecked(True)
         opts_layout.addWidget(self.include_border)
 
-        self.transparent_bg = QCheckBox("Transparent background (PNG only)")
+        self.transparent_bg = QCheckBox("Transparent background")
         opts_layout.addWidget(self.transparent_bg)
 
         options_group.setLayout(opts_layout)
@@ -96,7 +96,7 @@ class ExportDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def _on_format_changed(self, fmt):
-        self.transparent_bg.setEnabled(fmt == "PNG")
+        self.transparent_bg.setEnabled(fmt in ("PNG", "TIFF"))
         self.dpi_combo.setEnabled(fmt != "SVG")
         # CMYK is available for TIFF and PDF
         self.color_mode_combo.setEnabled(fmt in ("TIFF", "PDF"))

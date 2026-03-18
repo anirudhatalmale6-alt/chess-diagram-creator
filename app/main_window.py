@@ -245,19 +245,21 @@ class MainWindow(QMainWindow):
         dpi = params["dpi"]
         color_mode = params.get("color_mode", "RGB")
 
+        transparent = bool(params.get("transparent_bg"))
+
         if fmt == "SVG":
             self.scene.export_to_svg(path)
         elif color_mode == "CMYK" and fmt in ("TIFF", "PDF"):
-            self._export_cmyk(path, fmt, dpi)
+            self._export_cmyk(path, fmt, dpi,
+                              transparent=transparent and fmt == "TIFF")
         elif fmt == "PDF":
             self._export_pdf(path, dpi)
         elif fmt == "TIFF":
-            transparent = False
             image = self.scene.export_to_image(dpi, transparent=transparent)
-            self._save_tiff(image, path, dpi)
+            self._save_tiff(image, path, dpi, transparent=transparent)
         else:
-            transparent = params.get("transparent_bg") and fmt == "PNG"
-            image = self.scene.export_to_image(dpi, transparent=transparent)
+            use_transparent = transparent and fmt == "PNG"
+            image = self.scene.export_to_image(dpi, transparent=use_transparent)
             save_fmt = "JPG" if fmt == "JPEG" else fmt
             ok = image.save(path, save_fmt)
             if not ok:
@@ -299,24 +301,128 @@ class MainWindow(QMainWindow):
         )
         return pil_image
 
-    def _save_tiff(self, qimage, path: str, dpi: int):
-        """Save a QImage as TIFF (RGB) using Pillow."""
+    def _save_tiff(self, qimage, path: str, dpi: int,
+                   transparent: bool = False):
+        """Save a QImage as TIFF using Pillow."""
         pil_image = self._qimage_to_pil(qimage)
-        pil_image = pil_image.convert("RGB")
-        pil_image.save(path, "TIFF", dpi=(dpi, dpi))
+        if transparent:
+            pil_image.save(path, "TIFF", dpi=(dpi, dpi))  # RGBA
+        else:
+            pil_image.convert("RGB").save(path, "TIFF", dpi=(dpi, dpi))
 
-    def _export_cmyk(self, path: str, fmt: str, dpi: int):
+    def _export_cmyk(self, path: str, fmt: str, dpi: int,
+                     transparent: bool = False):
         """Export the board as CMYK TIFF or CMYK PDF using Pillow."""
         from PIL import Image
 
-        qimage = self.scene.export_to_image(dpi, transparent=False)
+        qimage = self.scene.export_to_image(dpi, transparent=transparent)
         pil_image = self._qimage_to_pil(qimage)
-        cmyk_image = pil_image.convert("CMYK")
 
-        if fmt == "TIFF":
-            cmyk_image.save(path, "TIFF", dpi=(dpi, dpi))
-        elif fmt == "PDF":
-            cmyk_image.save(path, "PDF", resolution=dpi)
+        if transparent and fmt == "TIFF":
+            # CMYK + Alpha — write manually (Pillow has no CMYKA mode)
+            r, g, b, a = pil_image.split()
+            rgb = Image.merge("RGB", (r, g, b))
+            cmyk = rgb.convert("CMYK")
+            self._write_cmyk_alpha_tiff(path, cmyk, a, dpi)
+        else:
+            cmyk_image = pil_image.convert("CMYK")
+            if fmt == "TIFF":
+                cmyk_image.save(path, "TIFF", dpi=(dpi, dpi))
+            elif fmt == "PDF":
+                cmyk_image.save(path, "PDF", resolution=dpi)
+
+    @staticmethod
+    def _write_cmyk_alpha_tiff(path: str, cmyk_image, alpha_channel,
+                               dpi: int):
+        """Write a CMYK+Alpha TIFF file.
+
+        Pillow does not support a CMYKA mode, so we write a
+        standard-compliant TIFF with 5 samples per pixel
+        (PhotometricInterpretation=5/CMYK, ExtraSamples=2/unassociated
+        alpha) using plain struct packing.
+        """
+        import struct
+
+        width, height = cmyk_image.size
+        cmyk_data = cmyk_image.tobytes()
+        alpha_data = alpha_channel.tobytes()
+
+        # Interleave C,M,Y,K,A per pixel
+        pixel_count = width * height
+        strip = bytearray(pixel_count * 5)
+        for i in range(pixel_count):
+            off5 = i * 5
+            off4 = i * 4
+            strip[off5]     = cmyk_data[off4]
+            strip[off5 + 1] = cmyk_data[off4 + 1]
+            strip[off5 + 2] = cmyk_data[off4 + 2]
+            strip[off5 + 3] = cmyk_data[off4 + 3]
+            strip[off5 + 4] = alpha_data[i]
+
+        strip_bytes = bytes(strip)
+        strip_size = len(strip_bytes)
+
+        # --- layout ---
+        num_tags = 13
+        ifd_offset = 8                       # right after 8-byte header
+        ifd_size = 2 + num_tags * 12 + 4     # count + entries + next-ptr
+
+        # Values that don't fit in 4 bytes are placed after the IFD
+        extra_offset = ifd_offset + ifd_size
+
+        # BitsPerSample: 5 x SHORT = 10 bytes
+        bps_off = extra_offset
+        bps_data = struct.pack('<5H', 8, 8, 8, 8, 8)
+
+        # XResolution / YResolution: RATIONAL (2 x LONG each)
+        xres_off = bps_off + len(bps_data)
+        xres_data = struct.pack('<II', dpi, 1)
+        yres_off = xres_off + len(xres_data)
+        yres_data = struct.pack('<II', dpi, 1)
+
+        strip_off = yres_off + len(yres_data)
+
+        def _tag(tag, typ, count, value):
+            """Return 12-byte IFD entry (little-endian)."""
+            hdr = struct.pack('<HHI', tag, typ, count)
+            if typ == 3 and count <= 2:          # SHORT
+                val = struct.pack('<HH', value & 0xFFFF, 0)
+            elif typ == 4 and count == 1:        # LONG
+                val = struct.pack('<I', value)
+            else:                                # offset
+                val = struct.pack('<I', value)
+            return hdr + val
+
+        with open(path, 'wb') as f:
+            # Header
+            f.write(b'II')                               # little-endian
+            f.write(struct.pack('<H', 42))               # TIFF magic
+            f.write(struct.pack('<I', ifd_offset))       # -> IFD
+
+            # IFD
+            f.write(struct.pack('<H', num_tags))
+            f.write(_tag(256, 3, 1, width))              # ImageWidth
+            f.write(_tag(257, 3, 1, height))             # ImageLength
+            f.write(_tag(258, 3, 5, bps_off))            # BitsPerSample
+            f.write(_tag(259, 3, 1, 1))                  # Compression=none
+            f.write(_tag(262, 3, 1, 5))                  # Photometric=CMYK
+            f.write(_tag(273, 4, 1, strip_off))          # StripOffsets
+            f.write(_tag(277, 3, 1, 5))                  # SamplesPerPixel
+            f.write(_tag(278, 4, 1, height))             # RowsPerStrip
+            f.write(_tag(279, 4, 1, strip_size))         # StripByteCounts
+            f.write(_tag(282, 5, 1, xres_off))           # XResolution
+            f.write(_tag(283, 5, 1, yres_off))           # YResolution
+            f.write(_tag(296, 3, 1, 2))                  # ResUnit=inch
+            f.write(_tag(338, 3, 1, 2))                  # ExtraSamples=unassoc-alpha
+            f.write(struct.pack('<I', 0))                 # next IFD = none
+
+            # Extra tag data
+            f.write(bps_data)
+            f.write(xres_data)
+            f.write(yres_data)
+
+            # Pixel data
+            f.write(strip_bytes)
 
     # ---- template save / load ---------------------------------------------
 
