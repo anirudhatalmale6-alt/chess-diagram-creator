@@ -7,6 +7,7 @@ a = Analysis(
     datas=[
         ('assets/pieces/default/*.svg', 'assets/pieces/default'),
         ('assets/icons/app_icon.png', 'assets/icons'),
+        ('assets/profiles/CoatedFOGRA39.icc', 'assets/profiles'),
         ('assets/LICENSE_pieces.txt', 'assets'),
     ],
     hiddenimports=[
@@ -14,6 +15,7 @@ a = Analysis(
         'PyQt6.QtSvgWidgets',
         'PIL',
         'PIL.Image',
+        'PIL.ImageCms',
         'PIL.TiffImagePlugin',
         'PIL.PdfImagePlugin',
     ],

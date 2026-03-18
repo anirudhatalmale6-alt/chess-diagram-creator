@@ -310,25 +310,53 @@ class MainWindow(QMainWindow):
         else:
             pil_image.convert("RGB").save(path, "TIFF", dpi=(dpi, dpi))
 
+    def _get_cmyk_profile_path(self):
+        """Return path to the bundled FOGRA39 CMYK ICC profile."""
+        return os.path.join(self._assets_dir, "profiles", "CoatedFOGRA39.icc")
+
     def _export_cmyk(self, path: str, fmt: str, dpi: int,
                      transparent: bool = False):
-        """Export the board as CMYK TIFF or CMYK PDF using Pillow."""
-        from PIL import Image
-        from .cmyk_profile import get_naive_cmyk_profile
+        """Export the board as CMYK TIFF or PDF using FOGRA39 ICC profile.
 
-        icc_bytes = get_naive_cmyk_profile()
+        Uses Relative Colorimetric intent with Black Point Compensation.
+        """
+        from PIL import Image, ImageCms
+
+        profile_path = self._get_cmyk_profile_path()
+        if not os.path.isfile(profile_path):
+            raise RuntimeError(
+                "CMYK ICC profile not found. Please reinstall the application.")
+
+        # Build ICC transform: sRGB → FOGRA39 CMYK
+        srgb_profile = ImageCms.createProfile("sRGB")
+        cmyk_profile = ImageCms.getOpenProfile(profile_path)
+
+        try:
+            bpc_flag = ImageCms.FLAGS["BLACKPOINTCOMPENSATION"]
+        except (AttributeError, KeyError):
+            bpc_flag = ImageCms._FLAGS["BLACKPOINTCOMPENSATION"]
+
+        transform = ImageCms.buildTransform(
+            srgb_profile, cmyk_profile, "RGB", "CMYK",
+            renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
+            flags=bpc_flag,
+        )
+
+        # Read the ICC profile bytes for embedding in the output
+        with open(profile_path, "rb") as f:
+            icc_bytes = f.read()
 
         qimage = self.scene.export_to_image(dpi, transparent=transparent)
         pil_image = self._qimage_to_pil(qimage)
 
         if transparent and fmt == "TIFF":
-            # CMYK + Alpha — write manually (Pillow has no CMYKA mode)
             r, g, b, a = pil_image.split()
             rgb = Image.merge("RGB", (r, g, b))
-            cmyk = rgb.convert("CMYK")
+            cmyk = ImageCms.applyTransform(rgb, transform)
             self._write_cmyk_alpha_tiff(path, cmyk, a, dpi, icc_bytes)
         else:
-            cmyk_image = pil_image.convert("CMYK")
+            rgb = pil_image.convert("RGB")
+            cmyk_image = ImageCms.applyTransform(rgb, transform)
             cmyk_image.info["icc_profile"] = icc_bytes
             if fmt == "TIFF":
                 cmyk_image.save(path, "TIFF", dpi=(dpi, dpi))
