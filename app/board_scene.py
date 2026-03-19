@@ -719,6 +719,7 @@ class ChessBoardScene(QGraphicsScene):
         ann.start_col = c1
         ann.end_row = r2
         ann.end_col = c2
+        ann.bridge_down = (r1 < 4)  # top half bridges down, bottom bridges up
         ann.setPos(sx, sy)
         self.addItem(ann)
         self._annotations.append(ann)
@@ -749,6 +750,8 @@ class ChessBoardScene(QGraphicsScene):
                                      end_point=QPointF(ex, ey))
                 ann.start_row, ann.start_col = r1, c1
                 ann.end_row, ann.end_col = r2, c2
+                if shape == "u_arrow":
+                    ann.bridge_down = (r1 < 4)
                 ann.setPos(sx, sy)
             else:
                 cell = self._cells[r1][c1]

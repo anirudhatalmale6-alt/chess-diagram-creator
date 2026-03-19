@@ -27,6 +27,7 @@ class AnnotationItem(QGraphicsItem):
         self.start_col = 0
         self.end_row = 0
         self.end_col = 0
+        self.bridge_down = False  # U-arrow bridge direction
         self.setZValue(10)  # above pieces
 
     def boundingRect(self) -> QRectF:
@@ -40,11 +41,11 @@ class AnnotationItem(QGraphicsItem):
             )
         if self.shape == "u_arrow":
             pad = self.cell_size * 0.35
-            bridge_y = -self.cell_size
+            bridge_y = self.cell_size if self.bridge_down else -self.cell_size
             x1 = min(0, self.end_point.x())
             x2 = max(0, self.end_point.x())
             y1 = min(0, self.end_point.y(), bridge_y)
-            y2 = max(0, self.end_point.y())
+            y2 = max(0, self.end_point.y(), bridge_y)
             return QRectF(x1 - pad, y1 - pad,
                           (x2 - x1) + 2 * pad, (y2 - y1) + 2 * pad)
         pad = 4
@@ -155,7 +156,7 @@ class AnnotationItem(QGraphicsItem):
         painter.drawPolygon(QPolygonF(points))
 
     def _paint_u_arrow(self, painter: QPainter, color: QColor):
-        """Draw a U-shaped arrow: up, across, down with arrowhead (castling)."""
+        """Draw a U-shaped arrow for castling. Bridge direction adapts to row."""
         ex, ey = self.end_point.x(), self.end_point.y()
         if abs(ex) < 1:
             return
@@ -169,20 +170,24 @@ class AnnotationItem(QGraphicsItem):
         painter.setBrush(QBrush(color))
 
         sx = 1 if ex >= 0 else -1
-        bridge_y = -self.cell_size
-        shaft_end_y = ey - head_len
+        bridge_y = self.cell_size if self.bridge_down else -self.cell_size
+        by = 1 if bridge_y >= 0 else -1  # bridge direction sign
+
+        # Arrowhead points back toward ey from bridge
+        dir_v = 1 if bridge_y < ey else -1
+        shaft_end_y = ey - dir_v * head_len
 
         points = [
-            QPointF(-sx * hw, 0),                       # start outer
-            QPointF(-sx * hw, bridge_y - hw),            # top-left outer corner
-            QPointF(ex + sx * hw, bridge_y - hw),        # top-right outer corner
-            QPointF(ex + sx * hw, shaft_end_y),          # outer edge before arrowhead
+            QPointF(-sx * hw, 0),                        # start outer
+            QPointF(-sx * hw, bridge_y + by * hw),       # outer corner (start side)
+            QPointF(ex + sx * hw, bridge_y + by * hw),   # outer corner (end side)
+            QPointF(ex + sx * hw, shaft_end_y),          # outer before arrowhead
             QPointF(ex + sx * head_w, shaft_end_y),      # arrowhead outer
             QPointF(ex, ey),                             # arrowhead tip
             QPointF(ex - sx * head_w, shaft_end_y),      # arrowhead inner
-            QPointF(ex - sx * hw, shaft_end_y),          # inner edge before arrowhead
-            QPointF(ex - sx * hw, bridge_y + hw),        # top inner corner (end side)
-            QPointF(sx * hw, bridge_y + hw),             # top inner corner (start side)
+            QPointF(ex - sx * hw, shaft_end_y),          # inner before arrowhead
+            QPointF(ex - sx * hw, bridge_y - by * hw),   # inner corner (end side)
+            QPointF(sx * hw, bridge_y - by * hw),        # inner corner (start side)
             QPointF(sx * hw, 0),                         # start inner
         ]
 
