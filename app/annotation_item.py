@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt, QRectF, QPointF
 class AnnotationItem(QGraphicsItem):
     """Base annotation drawn on top of board cells.
 
-    *shape* is one of: "arrow", "bent_arrow", "circle", "x", "square".
+    *shape* is one of: "arrow", "bent_arrow", "u_arrow", "circle", "x", "square".
     For arrows, the item spans from (0, 0) to end_point in local coords.
     For other shapes, the item is centred on the cell and sized to *cell_size*.
     """
@@ -38,6 +38,15 @@ class AnnotationItem(QGraphicsItem):
                 min(x1, x2) - pad, min(y1, y2) - pad,
                 abs(x2 - x1) + 2 * pad, abs(y2 - y1) + 2 * pad,
             )
+        if self.shape == "u_arrow":
+            pad = self.cell_size * 0.35
+            bridge_y = -self.cell_size
+            x1 = min(0, self.end_point.x())
+            x2 = max(0, self.end_point.x())
+            y1 = min(0, self.end_point.y(), bridge_y)
+            y2 = max(0, self.end_point.y())
+            return QRectF(x1 - pad, y1 - pad,
+                          (x2 - x1) + 2 * pad, (y2 - y1) + 2 * pad)
         pad = 4
         s = self.cell_size
         return QRectF(-pad, -pad, s + 2 * pad, s + 2 * pad)
@@ -51,6 +60,8 @@ class AnnotationItem(QGraphicsItem):
             self._paint_arrow(painter, c)
         elif self.shape == "bent_arrow":
             self._paint_bent_arrow(painter, c)
+        elif self.shape == "u_arrow":
+            self._paint_u_arrow(painter, c)
         elif self.shape == "circle":
             self._paint_circle(painter, c)
         elif self.shape == "x":
@@ -140,6 +151,40 @@ class AnnotationItem(QGraphicsItem):
                 QPointF(ex - sx * hw, sy * hw),
                 QPointF(0, sy * hw),
             ]
+
+        painter.drawPolygon(QPolygonF(points))
+
+    def _paint_u_arrow(self, painter: QPainter, color: QColor):
+        """Draw a U-shaped arrow: up, across, down with arrowhead (castling)."""
+        ex, ey = self.end_point.x(), self.end_point.y()
+        if abs(ex) < 1:
+            return
+
+        sw = self.cell_size * 0.12
+        hw = sw / 2
+        head_len = self.cell_size * 0.35
+        head_w = self.cell_size * 0.3
+
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        painter.setBrush(QBrush(color))
+
+        sx = 1 if ex >= 0 else -1
+        bridge_y = -self.cell_size
+        shaft_end_y = ey - head_len
+
+        points = [
+            QPointF(-sx * hw, 0),                       # start outer
+            QPointF(-sx * hw, bridge_y - hw),            # top-left outer corner
+            QPointF(ex + sx * hw, bridge_y - hw),        # top-right outer corner
+            QPointF(ex + sx * hw, shaft_end_y),          # outer edge before arrowhead
+            QPointF(ex + sx * head_w, shaft_end_y),      # arrowhead outer
+            QPointF(ex, ey),                             # arrowhead tip
+            QPointF(ex - sx * head_w, shaft_end_y),      # arrowhead inner
+            QPointF(ex - sx * hw, shaft_end_y),          # inner edge before arrowhead
+            QPointF(ex - sx * hw, bridge_y + hw),        # top inner corner (end side)
+            QPointF(sx * hw, bridge_y + hw),             # top inner corner (start side)
+            QPointF(sx * hw, 0),                         # start inner
+        ]
 
         painter.drawPolygon(QPolygonF(points))
 
