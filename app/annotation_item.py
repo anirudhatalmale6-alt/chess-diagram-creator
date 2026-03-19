@@ -96,54 +96,52 @@ class AnnotationItem(QGraphicsItem):
         painter.drawPolygon(poly)
 
     def _paint_bent_arrow(self, painter: QPainter, color: QColor):
-        """Draw an L-shaped arrow: horizontal first, then vertical."""
+        """Draw an L-shaped arrow: longer axis first, shorter with arrowhead."""
         ex, ey = self.end_point.x(), self.end_point.y()
         if abs(ex) < 1 and abs(ey) < 1:
             return
 
-        sw = self.cell_size * 0.12       # shaft width
+        sw = self.cell_size * 0.12
         hw = sw / 2
-        head_len = self.cell_size * 0.35  # arrowhead length
-        head_w = self.cell_size * 0.3     # arrowhead half-width
+        head_len = self.cell_size * 0.35
+        head_w = self.cell_size * 0.3
 
         painter.setPen(QPen(Qt.PenStyle.NoPen))
         painter.setBrush(QBrush(color))
 
-        # Corner point of the bend
-        cx, cy = ex, 0.0  # go horizontal to ex, then vertical to ey
-
-        # Determine direction signs
         sx = 1 if ex >= 0 else -1
         sy = 1 if ey >= 0 else -1
 
-        # --- Horizontal segment (from origin to corner) ---
-        h_points = [
-            QPointF(0, -hw),
-            QPointF(cx + sx * hw, -hw),
-            QPointF(cx + sx * hw, hw),
-            QPointF(0, hw),
-        ]
-        painter.drawPolygon(QPolygonF(h_points))
+        if abs(ey) >= abs(ex):
+            # Vertical first, then horizontal with arrowhead
+            shaft_end = ex - sx * head_len
+            points = [
+                QPointF(-sx * hw, 0),
+                QPointF(-sx * hw, ey + sy * hw),
+                QPointF(shaft_end, ey + sy * hw),
+                QPointF(shaft_end, ey + sy * head_w),
+                QPointF(ex, ey),
+                QPointF(shaft_end, ey - sy * head_w),
+                QPointF(shaft_end, ey - sy * hw),
+                QPointF(sx * hw, ey - sy * hw),
+                QPointF(sx * hw, 0),
+            ]
+        else:
+            # Horizontal first, then vertical with arrowhead
+            shaft_end = ey - sy * head_len
+            points = [
+                QPointF(0, -sy * hw),
+                QPointF(ex + sx * hw, -sy * hw),
+                QPointF(ex + sx * hw, shaft_end),
+                QPointF(ex + sx * head_w, shaft_end),
+                QPointF(ex, ey),
+                QPointF(ex - sx * head_w, shaft_end),
+                QPointF(ex - sx * hw, shaft_end),
+                QPointF(ex - sx * hw, sy * hw),
+                QPointF(0, sy * hw),
+            ]
 
-        # --- Vertical segment (from corner to end, minus arrowhead) ---
-        arrow_tip_y = ey
-        shaft_end_y = ey - sy * head_len
-
-        v_points = [
-            QPointF(cx - hw, cy - sy * hw),
-            QPointF(cx + hw, cy - sy * hw),
-            QPointF(cx + hw, shaft_end_y),
-            QPointF(cx - hw, shaft_end_y),
-        ]
-        painter.drawPolygon(QPolygonF(v_points))
-
-        # --- Arrowhead at the end of vertical segment ---
-        head_points = [
-            QPointF(cx - head_w, shaft_end_y),
-            QPointF(cx, arrow_tip_y),
-            QPointF(cx + head_w, shaft_end_y),
-        ]
-        painter.drawPolygon(QPolygonF(head_points))
+        painter.drawPolygon(QPolygonF(points))
 
     def _paint_circle(self, painter: QPainter, color: QColor):
         s = self.cell_size
