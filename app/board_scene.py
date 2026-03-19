@@ -673,6 +673,31 @@ class ChessBoardScene(QGraphicsScene):
         self.addItem(ann)
         self._annotations.append(ann)
 
+    def _add_bent_arrow(self, r1, c1, r2, c2):
+        """Add a bent (L-shaped) arrow from cell (r1,c1) to cell (r2,c2)."""
+        cell1 = self._cells[r1][c1]
+        cell2 = self._cells[r2][c2]
+        if not cell1 or not cell2:
+            return
+        sq = self.settings.square_size
+        sx = cell1.pos().x() + sq / 2
+        sy = cell1.pos().y() + sq / 2
+        ex = cell2.pos().x() + sq / 2 - sx
+        ey = cell2.pos().y() + sq / 2 - sy
+
+        from PyQt6.QtCore import QPointF
+        ann = AnnotationItem(
+            "bent_arrow", self._annotation_color,
+            self._annotation_opacity, sq,
+            end_point=QPointF(ex, ey))
+        ann.start_row = r1
+        ann.start_col = c1
+        ann.end_row = r2
+        ann.end_col = c2
+        ann.setPos(sx, sy)
+        self.addItem(ann)
+        self._annotations.append(ann)
+
     def _rebuild_annotations(self):
         """Recreate all annotations with current cell positions/sizes."""
         saved = []
@@ -685,7 +710,7 @@ class ChessBoardScene(QGraphicsScene):
 
         sq = self.settings.square_size
         for shape, r1, c1, r2, c2, color, opacity in saved:
-            if shape == "arrow":
+            if shape in ("arrow", "bent_arrow"):
                 cell1 = self._cells[r1][c1]
                 cell2 = self._cells[r2][c2]
                 if not cell1 or not cell2:
@@ -695,7 +720,7 @@ class ChessBoardScene(QGraphicsScene):
                 ex = cell2.pos().x() + sq / 2 - sx
                 ey = cell2.pos().y() + sq / 2 - sy
                 from PyQt6.QtCore import QPointF
-                ann = AnnotationItem("arrow", color, opacity, sq,
+                ann = AnnotationItem(shape, color, opacity, sq,
                                      end_point=QPointF(ex, ey))
                 ann.start_row, ann.start_col = r1, c1
                 ann.end_row, ann.end_col = r2, c2
@@ -755,7 +780,7 @@ class ChessBoardScene(QGraphicsScene):
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
             if row is not None:
-                if self._annotation_mode == "arrow":
+                if self._annotation_mode in ("arrow", "bent_arrow"):
                     self._arrow_start_pos = pos
                     self._arrow_start_rc = (row, col)
                 else:
@@ -765,13 +790,16 @@ class ChessBoardScene(QGraphicsScene):
 
     def mouseReleaseEvent(self, event):
         if (event.button() == Qt.MouseButton.LeftButton
-                and self._annotation_mode == "arrow"
+                and self._annotation_mode in ("arrow", "bent_arrow")
                 and self._arrow_start_rc is not None):
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
             r1, c1 = self._arrow_start_rc
             if row is not None and (row != r1 or col != c1):
-                self._add_arrow(r1, c1, row, col)
+                if self._annotation_mode == "bent_arrow":
+                    self._add_bent_arrow(r1, c1, row, col)
+                else:
+                    self._add_arrow(r1, c1, row, col)
             self._arrow_start_pos = None
             self._arrow_start_rc = None
             return
