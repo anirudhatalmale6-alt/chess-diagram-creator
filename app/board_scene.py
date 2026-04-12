@@ -43,7 +43,6 @@ _PIECE_WORDS = {
 _COLOR_WORDS = {
     "white": "w", "black": "b",
     "light": "w", "dark": "b",
-    "w": "w", "b": "b",
 }
 
 _IMAGE_EXTS = {
