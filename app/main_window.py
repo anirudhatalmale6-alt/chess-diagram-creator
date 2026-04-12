@@ -104,6 +104,8 @@ class MainWindow(QMainWindow):
         sp.annotationColorChanged.connect(self._on_annotation_color)
         sp.annotationOpacityChanged.connect(self.scene.set_annotation_opacity)
         sp.clearAnnotationsRequested.connect(self.scene.clear_annotations)
+        sp.annotationTextSizeChanged.connect(self.scene.set_annotation_text_size)
+        sp.annotationWrapCoordsChanged.connect(self.scene.set_annotation_wrap_coords)
 
     def _create_actions(self):
         self._start_action = QAction("Start Position", self)

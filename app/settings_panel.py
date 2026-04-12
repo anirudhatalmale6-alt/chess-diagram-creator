@@ -65,6 +65,8 @@ class SettingsPanel(QWidget):
     annotationModeChanged = pyqtSignal(str)
     annotationColorChanged = pyqtSignal(str)
     annotationOpacityChanged = pyqtSignal(float)
+    annotationTextSizeChanged = pyqtSignal(int)
+    annotationWrapCoordsChanged = pyqtSignal(bool)
     clearAnnotationsRequested = pyqtSignal()
 
     def __init__(self, settings, parent=None):
@@ -302,6 +304,19 @@ class SettingsPanel(QWidget):
         self.ann_opacity_slider.valueChanged.connect(self._on_ann_opacity)
         ann_layout.addRow("Opacity:", self.ann_opacity_slider)
         ann_layout.addRow("", self.ann_opacity_label)
+
+        self.ann_text_size_spin = QSpinBox()
+        self.ann_text_size_spin.setRange(8, 72)
+        self.ann_text_size_spin.setValue(28)
+        self.ann_text_size_spin.valueChanged.connect(
+            self.annotationTextSizeChanged.emit)
+        ann_layout.addRow("Text Size:", self.ann_text_size_spin)
+
+        self.ann_wrap_coords_cb = QCheckBox("Include coordinates")
+        self.ann_wrap_coords_cb.setChecked(False)
+        self.ann_wrap_coords_cb.toggled.connect(
+            self.annotationWrapCoordsChanged.emit)
+        ann_layout.addRow("Highlight:", self.ann_wrap_coords_cb)
 
         clear_ann_btn = QPushButton("Clear All Annotations")
         clear_ann_btn.clicked.connect(self.clearAnnotationsRequested.emit)

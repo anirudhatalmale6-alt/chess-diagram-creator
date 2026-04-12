@@ -134,9 +134,11 @@ class ChessBoardScene(QGraphicsScene):
 
         # Annotations
         self._annotations: list[AnnotationItem] = []
-        self._annotation_mode: str = ""  # "", "arrow", "circle", "x", "square"
+        self._annotation_mode: str = ""  # "", "arrow", "circle", "x", "square", "text", etc.
         self._annotation_color = QColor(255, 0, 0)
         self._annotation_opacity = 0.7
+        self._annotation_text_size = 28
+        self._annotation_wrap_coords = False
         self._arrow_start_pos = None
         self._arrow_start_rc = None
 
@@ -624,6 +626,13 @@ class ChessBoardScene(QGraphicsScene):
     def set_annotation_opacity(self, opacity: float):
         self._annotation_opacity = opacity
 
+    def set_annotation_text_size(self, size: int):
+        self._annotation_text_size = size
+
+    def set_annotation_wrap_coords(self, wrap: bool):
+        self._annotation_wrap_coords = wrap
+        self._rebuild_annotations()
+
     def clear_annotations(self):
         for ann in self._annotations:
             self.removeItem(ann)
@@ -670,6 +679,7 @@ class ChessBoardScene(QGraphicsScene):
             "text", self._annotation_color,
             self._annotation_opacity, sq)
         ann.text = text.strip()
+        ann.text_size = self._annotation_text_size
         ann.start_row = row
         ann.start_col = col
         ann.end_row = row
@@ -678,12 +688,20 @@ class ChessBoardScene(QGraphicsScene):
         self.addItem(ann)
         self._annotations.append(ann)
 
+    def _get_coord_extras(self):
+        """Calculate extra space for coordinate labels."""
+        s = self.settings
+        coord_space = s.coord_size + s.coord_distance
+        border_w = s.border_thickness
+        return coord_space + border_w, coord_space + border_w
+
     def _add_highlight_row(self, row: int):
         """Add a highlight outline around the given row."""
         cell = self._cells[row][0]
         if not cell:
             return
         sq = self.settings.square_size
+        extra_left, extra_bottom = self._get_coord_extras()
         ann = AnnotationItem(
             "highlight_row", self._annotation_color,
             self._annotation_opacity, sq)
@@ -691,6 +709,8 @@ class ChessBoardScene(QGraphicsScene):
         ann.start_col = 0
         ann.end_row = row
         ann.end_col = 7
+        ann.wrap_coords = self._annotation_wrap_coords
+        ann.coord_extra_left = extra_left
         ann.setPos(cell.pos())
         self.addItem(ann)
         self._annotations.append(ann)
@@ -701,6 +721,7 @@ class ChessBoardScene(QGraphicsScene):
         if not cell:
             return
         sq = self.settings.square_size
+        extra_left, extra_bottom = self._get_coord_extras()
         ann = AnnotationItem(
             "highlight_col", self._annotation_color,
             self._annotation_opacity, sq)
@@ -708,6 +729,8 @@ class ChessBoardScene(QGraphicsScene):
         ann.start_col = col
         ann.end_row = 7
         ann.end_col = col
+        ann.wrap_coords = self._annotation_wrap_coords
+        ann.coord_extra_bottom = extra_bottom
         ann.setPos(cell.pos())
         self.addItem(ann)
         self._annotations.append(ann)
@@ -796,12 +819,15 @@ class ChessBoardScene(QGraphicsScene):
             saved.append((ann.shape, ann.start_row, ann.start_col,
                           ann.end_row, ann.end_col,
                           QColor(ann.color), ann._opacity,
-                          getattr(ann, 'text', '')))
+                          getattr(ann, 'text', ''),
+                          getattr(ann, 'text_size', 28),
+                          getattr(ann, 'wrap_coords', False)))
             self.removeItem(ann)
         self._annotations.clear()
 
         sq = self.settings.square_size
-        for shape, r1, c1, r2, c2, color, opacity, text in saved:
+        extra_left, extra_bottom = self._get_coord_extras()
+        for shape, r1, c1, r2, c2, color, opacity, text, text_size, wrap_coords in saved:
             if shape in ("arrow", "bent_arrow", "u_arrow"):
                 cell1 = self._cells[r1][c1]
                 cell2 = self._cells[r2][c2]
@@ -826,6 +852,8 @@ class ChessBoardScene(QGraphicsScene):
                 ann = AnnotationItem(shape, color, opacity, sq)
                 ann.start_row, ann.start_col = r1, 0
                 ann.end_row, ann.end_col = r1, 7
+                ann.wrap_coords = wrap_coords
+                ann.coord_extra_left = extra_left
                 ann.setPos(cell.pos())
             elif shape == "highlight_col":
                 cell = self._cells[0][c1]
@@ -834,6 +862,8 @@ class ChessBoardScene(QGraphicsScene):
                 ann = AnnotationItem(shape, color, opacity, sq)
                 ann.start_row, ann.start_col = 0, c1
                 ann.end_row, ann.end_col = 7, c1
+                ann.wrap_coords = wrap_coords
+                ann.coord_extra_bottom = extra_bottom
                 ann.setPos(cell.pos())
             else:
                 cell = self._cells[r1][c1]
@@ -844,6 +874,7 @@ class ChessBoardScene(QGraphicsScene):
                 ann.end_row, ann.end_col = r1, c1
                 if shape == "text":
                     ann.text = text
+                    ann.text_size = text_size
                 ann.setPos(cell.pos())
             self.addItem(ann)
             self._annotations.append(ann)

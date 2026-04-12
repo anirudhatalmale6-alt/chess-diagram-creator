@@ -31,7 +31,11 @@ class AnnotationItem(QGraphicsItem):
         self.end_col = 0
         self.bridge_down = False  # U-arrow bridge direction
         self.text = ""  # for text annotations
+        self.text_size = 28  # text font size in points
         self.highlight_span = 8  # number of cells in row/col highlight
+        self.wrap_coords = False  # extend highlight to include coordinates
+        self.coord_extra_left = 0.0  # extra width for rank labels
+        self.coord_extra_bottom = 0.0  # extra height for file labels
         self.setZValue(10)  # above pieces
 
     def boundingRect(self) -> QRectF:
@@ -55,13 +59,17 @@ class AnnotationItem(QGraphicsItem):
         if self.shape == "highlight_row":
             pad = 4
             s = self.cell_size
-            return QRectF(-pad, -pad,
-                          s * self.highlight_span + 2 * pad, s + 2 * pad)
+            w = s * self.highlight_span
+            extra_left = self.coord_extra_left if self.wrap_coords else 0
+            return QRectF(-extra_left - pad, -pad,
+                          w + extra_left + 2 * pad, s + 2 * pad)
         if self.shape == "highlight_col":
             pad = 4
             s = self.cell_size
+            h = s * self.highlight_span
+            extra_bottom = self.coord_extra_bottom if self.wrap_coords else 0
             return QRectF(-pad, -pad,
-                          s + 2 * pad, s * self.highlight_span + 2 * pad)
+                          s + 2 * pad, h + extra_bottom + 2 * pad)
         pad = 4
         s = self.cell_size
         return QRectF(-pad, -pad, s + 2 * pad, s + 2 * pad)
@@ -242,7 +250,7 @@ class AnnotationItem(QGraphicsItem):
         if not self.text:
             return
         s = self.cell_size
-        font = QFont("Arial", max(8, int(s * 0.35)))
+        font = QFont("Arial", max(8, self.text_size))
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QPen(color))
@@ -253,24 +261,35 @@ class AnnotationItem(QGraphicsItem):
         s = self.cell_size
         w = s * self.highlight_span
         pen_w = s * 0.06
+        inset = s * 0.06  # inset so adjacent highlights don't touch
         pen = QPen(color, pen_w)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        margin = pen_w / 2
+        x = inset
+        y = inset
+        rw = w - 2 * inset
+        rh = s - 2 * inset
+        if self.wrap_coords:
+            x = -self.coord_extra_left + inset
+            rw = w + self.coord_extra_left - 2 * inset
         painter.drawRoundedRect(
-            QRectF(margin, margin, w - 2 * margin, s - 2 * margin),
-            s * 0.15, s * 0.15)
+            QRectF(x, y, rw, rh), s * 0.15, s * 0.15)
 
     def _paint_highlight_col(self, painter: QPainter, color: QColor):
         s = self.cell_size
         h = s * self.highlight_span
         pen_w = s * 0.06
+        inset = s * 0.06  # inset so adjacent highlights don't touch
         pen = QPen(color, pen_w)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        margin = pen_w / 2
+        x = inset
+        y = inset
+        rw = s - 2 * inset
+        rh = h - 2 * inset
+        if self.wrap_coords:
+            rh = h + self.coord_extra_bottom - 2 * inset
         painter.drawRoundedRect(
-            QRectF(margin, margin, s - 2 * margin, h - 2 * margin),
-            s * 0.15, s * 0.15)
+            QRectF(x, y, rw, rh), s * 0.15, s * 0.15)
