@@ -691,6 +691,8 @@ class ChessBoardScene(QGraphicsScene):
     def _get_coord_extras(self):
         """Calculate extra space for coordinate labels."""
         s = self.settings
+        if s.coord_position != "outside":
+            return 0.0, 0.0
         coord_space = s.coord_size + s.coord_distance
         border_w = s.border_thickness
         return coord_space + border_w, coord_space + border_w
@@ -852,7 +854,7 @@ class ChessBoardScene(QGraphicsScene):
                 ann = AnnotationItem(shape, color, opacity, sq)
                 ann.start_row, ann.start_col = r1, 0
                 ann.end_row, ann.end_col = r1, 7
-                ann.wrap_coords = wrap_coords
+                ann.wrap_coords = self._annotation_wrap_coords
                 ann.coord_extra_left = extra_left
                 ann.setPos(cell.pos())
             elif shape == "highlight_col":
@@ -862,7 +864,7 @@ class ChessBoardScene(QGraphicsScene):
                 ann = AnnotationItem(shape, color, opacity, sq)
                 ann.start_row, ann.start_col = 0, c1
                 ann.end_row, ann.end_col = 7, c1
-                ann.wrap_coords = wrap_coords
+                ann.wrap_coords = self._annotation_wrap_coords
                 ann.coord_extra_bottom = extra_bottom
                 ann.setPos(cell.pos())
             else:
