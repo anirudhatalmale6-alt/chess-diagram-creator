@@ -5,6 +5,7 @@ import re
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsPathItem
 from PyQt6.QtGui import (
     QColor, QPen, QBrush, QPainter, QImage, QPainterPath, QPixmap,
+    QFont, QFontMetrics,
 )
 from PyQt6.QtCore import Qt, QRectF, QByteArray
 
@@ -694,14 +695,22 @@ class ChessBoardScene(QGraphicsScene):
         Returns (extra_left, extra_bottom) — how far highlights extend
         past the cell grid to wrap around coordinate labels, including
         a margin so the labels don't touch the outline edge.
+        Uses actual font metrics so wrapping adapts to any text size.
         """
         s = self.settings
         if s.coord_position != "outside":
             return 0.0, 0.0
-        coord_space = s.coord_size + s.coord_distance
+        font = QFont(s.coord_font, s.coord_size)
+        font.setBold(True)
+        fm = QFontMetrics(font)
+        label_height = fm.height()
+        label_width = max(fm.horizontalAdvance(c) for c in "12345678")
         border_w = s.border_thickness
-        margin = s.coord_size * 0.4
-        return coord_space + border_w + margin, coord_space + border_w + margin
+        coord_dist = s.coord_distance
+        margin = label_height * 0.3
+        extra_left = border_w + coord_dist + label_width + margin
+        extra_bottom = border_w + coord_dist + label_height + margin
+        return extra_left, extra_bottom
 
     def _add_highlight_row(self, row: int):
         """Add a highlight outline around the given row."""
