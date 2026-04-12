@@ -33,6 +33,10 @@ class ExportDialog(QDialog):
 
         self.format_combo = QComboBox()
         self.format_combo.addItems(["PNG", "SVG", "PDF", "JPEG", "BMP", "TIFF"])
+        saved_fmt = self._settings.value("export/last_format", "PNG")
+        idx = self.format_combo.findText(saved_fmt)
+        if idx >= 0:
+            self.format_combo.setCurrentIndex(idx)
         self.format_combo.currentTextChanged.connect(self._on_format_changed)
         form.addRow("Format:", self.format_combo)
 
@@ -77,6 +81,8 @@ class ExportDialog(QDialog):
             ext_map = {"JPEG": "jpg", "TIFF": "tif"}
             ext = ext_map.get(fmt, fmt.lower())
             self.path_edit.setText(os.path.join(saved_dir, f"diagram.{ext}"))
+        # Trigger format-dependent UI state for restored format
+        self._on_format_changed(self.format_combo.currentText())
         path_layout.addWidget(self.path_edit)
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self._browse)
@@ -145,6 +151,7 @@ class ExportDialog(QDialog):
         self._result_format = self.format_combo.currentText()
         self._result_dpi = int(self.dpi_combo.currentText())
         self._settings.setValue("export/last_directory", os.path.dirname(path))
+        self._settings.setValue("export/last_format", self._result_format)
         self.accept()
 
     def get_result(self):
