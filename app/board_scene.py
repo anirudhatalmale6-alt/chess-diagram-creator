@@ -630,7 +630,16 @@ class ChessBoardScene(QGraphicsScene):
         self._annotations.clear()
 
     def _add_annotation_at(self, row: int, col: int):
-        """Add a circle / x / square annotation at the given cell."""
+        """Add a circle / x / square / text / highlight annotation."""
+        if self._annotation_mode == "text":
+            self._add_text_at(row, col)
+            return
+        if self._annotation_mode == "highlight_row":
+            self._add_highlight_row(row)
+            return
+        if self._annotation_mode == "highlight_col":
+            self._add_highlight_col(col)
+            return
         cell = self._cells[row][col]
         if not cell:
             return
@@ -641,6 +650,63 @@ class ChessBoardScene(QGraphicsScene):
         ann.start_row = row
         ann.start_col = col
         ann.end_row = row
+        ann.end_col = col
+        ann.setPos(cell.pos())
+        self.addItem(ann)
+        self._annotations.append(ann)
+
+    def _add_text_at(self, row: int, col: int):
+        """Prompt for text and add it to the given cell."""
+        from PyQt6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(
+            None, "Add Text", "Enter text for this square:")
+        if not ok or not text.strip():
+            return
+        cell = self._cells[row][col]
+        if not cell:
+            return
+        sq = self.settings.square_size
+        ann = AnnotationItem(
+            "text", self._annotation_color,
+            self._annotation_opacity, sq)
+        ann.text = text.strip()
+        ann.start_row = row
+        ann.start_col = col
+        ann.end_row = row
+        ann.end_col = col
+        ann.setPos(cell.pos())
+        self.addItem(ann)
+        self._annotations.append(ann)
+
+    def _add_highlight_row(self, row: int):
+        """Add a highlight outline around the given row."""
+        cell = self._cells[row][0]
+        if not cell:
+            return
+        sq = self.settings.square_size
+        ann = AnnotationItem(
+            "highlight_row", self._annotation_color,
+            self._annotation_opacity, sq)
+        ann.start_row = row
+        ann.start_col = 0
+        ann.end_row = row
+        ann.end_col = 7
+        ann.setPos(cell.pos())
+        self.addItem(ann)
+        self._annotations.append(ann)
+
+    def _add_highlight_col(self, col: int):
+        """Add a highlight outline around the given column."""
+        cell = self._cells[0][col]
+        if not cell:
+            return
+        sq = self.settings.square_size
+        ann = AnnotationItem(
+            "highlight_col", self._annotation_color,
+            self._annotation_opacity, sq)
+        ann.start_row = 0
+        ann.start_col = col
+        ann.end_row = 7
         ann.end_col = col
         ann.setPos(cell.pos())
         self.addItem(ann)
@@ -729,12 +795,13 @@ class ChessBoardScene(QGraphicsScene):
         for ann in self._annotations:
             saved.append((ann.shape, ann.start_row, ann.start_col,
                           ann.end_row, ann.end_col,
-                          QColor(ann.color), ann._opacity))
+                          QColor(ann.color), ann._opacity,
+                          getattr(ann, 'text', '')))
             self.removeItem(ann)
         self._annotations.clear()
 
         sq = self.settings.square_size
-        for shape, r1, c1, r2, c2, color, opacity in saved:
+        for shape, r1, c1, r2, c2, color, opacity, text in saved:
             if shape in ("arrow", "bent_arrow", "u_arrow"):
                 cell1 = self._cells[r1][c1]
                 cell2 = self._cells[r2][c2]
@@ -752,6 +819,22 @@ class ChessBoardScene(QGraphicsScene):
                 if shape == "u_arrow":
                     ann.bridge_down = (r1 < 4)
                 ann.setPos(sx, sy)
+            elif shape == "highlight_row":
+                cell = self._cells[r1][0]
+                if not cell:
+                    continue
+                ann = AnnotationItem(shape, color, opacity, sq)
+                ann.start_row, ann.start_col = r1, 0
+                ann.end_row, ann.end_col = r1, 7
+                ann.setPos(cell.pos())
+            elif shape == "highlight_col":
+                cell = self._cells[0][c1]
+                if not cell:
+                    continue
+                ann = AnnotationItem(shape, color, opacity, sq)
+                ann.start_row, ann.start_col = 0, c1
+                ann.end_row, ann.end_col = 7, c1
+                ann.setPos(cell.pos())
             else:
                 cell = self._cells[r1][c1]
                 if not cell:
@@ -759,6 +842,8 @@ class ChessBoardScene(QGraphicsScene):
                 ann = AnnotationItem(shape, color, opacity, sq)
                 ann.start_row, ann.start_col = r1, c1
                 ann.end_row, ann.end_col = r1, c1
+                if shape == "text":
+                    ann.text = text
                 ann.setPos(cell.pos())
             self.addItem(ann)
             self._annotations.append(ann)

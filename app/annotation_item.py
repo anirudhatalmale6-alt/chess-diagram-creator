@@ -1,16 +1,18 @@
-"""Annotation items — arrows, circles, Xs, and squares drawn on the board."""
+"""Annotation items — arrows, circles, Xs, squares, text, and highlights."""
 
 import math
 from PyQt6.QtWidgets import QGraphicsItem
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QPolygonF
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QPolygonF, QFont
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
 
 class AnnotationItem(QGraphicsItem):
     """Base annotation drawn on top of board cells.
 
-    *shape* is one of: "arrow", "bent_arrow", "u_arrow", "circle", "x", "square".
+    *shape* is one of: "arrow", "bent_arrow", "u_arrow", "circle", "x",
+    "square", "text", "highlight_row", "highlight_col".
     For arrows, the item spans from (0, 0) to end_point in local coords.
+    For highlights, the item spans the full row or column.
     For other shapes, the item is centred on the cell and sized to *cell_size*.
     """
 
@@ -28,6 +30,8 @@ class AnnotationItem(QGraphicsItem):
         self.end_row = 0
         self.end_col = 0
         self.bridge_down = False  # U-arrow bridge direction
+        self.text = ""  # for text annotations
+        self.highlight_span = 8  # number of cells in row/col highlight
         self.setZValue(10)  # above pieces
 
     def boundingRect(self) -> QRectF:
@@ -48,6 +52,16 @@ class AnnotationItem(QGraphicsItem):
             y2 = max(0, self.end_point.y(), bridge_y)
             return QRectF(x1 - pad, y1 - pad,
                           (x2 - x1) + 2 * pad, (y2 - y1) + 2 * pad)
+        if self.shape == "highlight_row":
+            pad = 4
+            s = self.cell_size
+            return QRectF(-pad, -pad,
+                          s * self.highlight_span + 2 * pad, s + 2 * pad)
+        if self.shape == "highlight_col":
+            pad = 4
+            s = self.cell_size
+            return QRectF(-pad, -pad,
+                          s + 2 * pad, s * self.highlight_span + 2 * pad)
         pad = 4
         s = self.cell_size
         return QRectF(-pad, -pad, s + 2 * pad, s + 2 * pad)
@@ -69,6 +83,12 @@ class AnnotationItem(QGraphicsItem):
             self._paint_x(painter, c)
         elif self.shape == "square":
             self._paint_square(painter, c)
+        elif self.shape == "text":
+            self._paint_text(painter, c)
+        elif self.shape == "highlight_row":
+            self._paint_highlight_row(painter, c)
+        elif self.shape == "highlight_col":
+            self._paint_highlight_col(painter, c)
 
     def _paint_arrow(self, painter: QPainter, color: QColor):
         ex, ey = self.end_point.x(), self.end_point.y()
@@ -217,3 +237,40 @@ class AnnotationItem(QGraphicsItem):
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         margin = s * 0.1
         painter.drawRect(QRectF(margin, margin, s - 2 * margin, s - 2 * margin))
+
+    def _paint_text(self, painter: QPainter, color: QColor):
+        if not self.text:
+            return
+        s = self.cell_size
+        font = QFont("Arial", max(8, int(s * 0.35)))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QPen(color))
+        painter.drawText(QRectF(0, 0, s, s),
+                         Qt.AlignmentFlag.AlignCenter, self.text)
+
+    def _paint_highlight_row(self, painter: QPainter, color: QColor):
+        s = self.cell_size
+        w = s * self.highlight_span
+        pen_w = s * 0.06
+        pen = QPen(color, pen_w)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        margin = pen_w / 2
+        painter.drawRoundedRect(
+            QRectF(margin, margin, w - 2 * margin, s - 2 * margin),
+            s * 0.15, s * 0.15)
+
+    def _paint_highlight_col(self, painter: QPainter, color: QColor):
+        s = self.cell_size
+        h = s * self.highlight_span
+        pen_w = s * 0.06
+        pen = QPen(color, pen_w)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        margin = pen_w / 2
+        painter.drawRoundedRect(
+            QRectF(margin, margin, s - 2 * margin, h - 2 * margin),
+            s * 0.15, s * 0.15)
