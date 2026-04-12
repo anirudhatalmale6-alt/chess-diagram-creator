@@ -48,6 +48,10 @@ class ExportDialog(QDialog):
         self.color_mode_combo = QComboBox()
         self.color_mode_combo.addItems(["RGB", "CMYK"])
         self.color_mode_combo.setEnabled(False)  # Enabled only for TIFF/PDF
+        saved_color = self._settings.value("export/last_color_mode", "RGB")
+        cidx = self.color_mode_combo.findText(saved_color)
+        if cidx >= 0:
+            self.color_mode_combo.setCurrentIndex(cidx)
         form.addRow("Color Mode:", self.color_mode_combo)
 
         settings_group.setLayout(form)
@@ -152,6 +156,7 @@ class ExportDialog(QDialog):
         self._result_dpi = int(self.dpi_combo.currentText())
         self._settings.setValue("export/last_directory", os.path.dirname(path))
         self._settings.setValue("export/last_format", self._result_format)
+        self._settings.setValue("export/last_color_mode", self.color_mode_combo.currentText())
         self.accept()
 
     def get_result(self):
