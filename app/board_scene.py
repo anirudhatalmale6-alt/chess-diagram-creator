@@ -689,13 +689,19 @@ class ChessBoardScene(QGraphicsScene):
         self._annotations.append(ann)
 
     def _get_coord_extras(self):
-        """Calculate extra space for coordinate labels."""
+        """Calculate extra space for coordinate labels.
+
+        Returns (extra_left, extra_bottom) — how far highlights extend
+        past the cell grid to wrap around coordinate labels, including
+        a margin so the labels don't touch the outline edge.
+        """
         s = self.settings
         if s.coord_position != "outside":
             return 0.0, 0.0
         coord_space = s.coord_size + s.coord_distance
         border_w = s.border_thickness
-        return coord_space + border_w, coord_space + border_w
+        margin = s.coord_size * 0.4
+        return coord_space + border_w + margin, coord_space + border_w + margin
 
     def _add_highlight_row(self, row: int):
         """Add a highlight outline around the given row."""
