@@ -261,18 +261,18 @@ class AnnotationItem(QGraphicsItem):
         s = self.cell_size
         w = s * self.highlight_span
         pen_w = s * 0.06
-        inset = s * 0.06  # inset so adjacent highlights don't touch
+        inset = s * 0.06  # inset between adjacent rows (top/bottom only)
         pen = QPen(color, pen_w)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-        x = inset
+        x = 0
         y = inset
-        rw = w - 2 * inset
+        rw = w
         rh = s - 2 * inset
         if self.wrap_coords:
-            x = -self.coord_extra_left + inset
-            rw = w + self.coord_extra_left - 2 * inset
+            x = -self.coord_extra_left
+            rw = w + self.coord_extra_left
         painter.drawRoundedRect(
             QRectF(x, y, rw, rh), s * 0.15, s * 0.15)
 
@@ -280,16 +280,16 @@ class AnnotationItem(QGraphicsItem):
         s = self.cell_size
         h = s * self.highlight_span
         pen_w = s * 0.06
-        inset = s * 0.06  # inset so adjacent highlights don't touch
+        inset = s * 0.06  # inset between adjacent columns (left/right only)
         pen = QPen(color, pen_w)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         x = inset
-        y = inset
+        y = 0
         rw = s - 2 * inset
-        rh = h - 2 * inset
+        rh = h
         if self.wrap_coords:
-            rh = h + self.coord_extra_bottom - 2 * inset
+            rh = h + self.coord_extra_bottom
         painter.drawRoundedRect(
             QRectF(x, y, rw, rh), s * 0.15, s * 0.15)
