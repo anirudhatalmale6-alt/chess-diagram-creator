@@ -33,9 +33,11 @@ jobs:
         with:
           name: ChessDiagramCreator-Installer
           path: dist/ChessDiagramCreator_Setup_*.exe
+          retention-days: 1
 
       - name: Upload Portable
         uses: actions/upload-artifact@v4
         with:
           name: ChessDiagramCreator-Portable
           path: dist/ChessDiagramCreator/
+          retention-days: 1
