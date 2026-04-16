@@ -318,13 +318,22 @@ class AnnotationItem(QGraphicsItem):
         s = self.cell_size
         font = QFont("Arial", max(8, int(self.text_size)))
         font.setBold(True)
-        painter.setFont(font)
-        painter.setPen(QPen(color))
-        # Use TextDontClip so large text isn't cropped by the cell rect.
-        flags = (Qt.AlignmentFlag.AlignCenter
-                 | Qt.TextFlag.TextDontClip
-                 | Qt.TextFlag.TextSingleLine)
-        painter.drawText(QRectF(0, 0, s, s), int(flags), self.text)
+        fm = QFontMetricsF(font)
+        # Use tight bounding rect for accurate visual centering — avoids
+        # the ascent/descent padding that would shift the glyph off-center.
+        tight = fm.tightBoundingRect(self.text)
+        x = (s - tight.width()) / 2.0 - tight.x()
+        y = (s - tight.height()) / 2.0 - tight.y()
+        # Render as a filled QPainterPath rather than drawText.  This is
+        # a vector glyph fill and avoids the double-rendering artifacts
+        # seen with semi-transparent drawText + TextDontClip when the
+        # glyph overflows the layout rect.
+        path = QPainterPath()
+        path.addText(x, y, font, self.text)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(color))
+        painter.drawPath(path)
 
     def _paint_highlight_row(self, painter: QPainter, color: QColor):
         s = self.cell_size
