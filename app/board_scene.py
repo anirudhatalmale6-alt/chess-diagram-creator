@@ -143,6 +143,15 @@ class ChessBoardScene(QGraphicsScene):
         self._arrow_start_pos = None
         self._arrow_start_rc = None
 
+        # Per-cell textures: maps (row, col) -> source path so they survive
+        # board rebuilds and can be snapshot for undo.
+        self._cell_textures: dict[tuple[int, int], str] = {}
+
+        # Undo history (snapshots of pieces / annotations / cell textures).
+        self._undo_stack: list = []
+        self._undo_limit = 20
+        self._undo_in_progress = False
+
         self._apply_background()
         self._build_board()
         self._load_default_pieces()
@@ -339,11 +348,19 @@ class ChessBoardScene(QGraphicsScene):
 
         self._build_board()
 
-        # Restore textures
+        # Restore shared light/dark textures
         if saved_light_texture:
             self.set_cell_texture(True, saved_light_texture)
         if saved_dark_texture:
             self.set_cell_texture(False, saved_dark_texture)
+
+        # Restore per-cell textures
+        for (r, c), path in list(self._cell_textures.items()):
+            cell = self._cells[r][c]
+            if cell:
+                pm = QPixmap(path)
+                if not pm.isNull():
+                    cell.set_cell_texture(pm)
 
         for (r, c), ptype in saved_pieces.items():
             self.place_piece(ptype, r, c)
@@ -392,14 +409,21 @@ class ChessBoardScene(QGraphicsScene):
             del self._pieces[key]
 
     def clear_all_pieces(self):
+        if self._pieces and not self._undo_in_progress:
+            self.push_undo()
         for key in list(self._pieces.keys()):
             self.removeItem(self._pieces[key])
         self._pieces.clear()
 
     def set_starting_position(self):
-        self.clear_all_pieces()
-        for (row, col), piece_type in STARTING_POSITION.items():
-            self.place_piece(piece_type, row, col)
+        self.push_undo()
+        self._undo_in_progress = True
+        try:
+            self.clear_all_pieces()
+            for (row, col), piece_type in STARTING_POSITION.items():
+                self.place_piece(piece_type, row, col)
+        finally:
+            self._undo_in_progress = False
 
     def snap_piece_to_square(self, piece: ChessPieceItem):
         center = piece.pos() + piece.boundingRect().center()
@@ -439,6 +463,136 @@ class ChessBoardScene(QGraphicsScene):
                         return row, col
         return None, None
 
+    # ---- undo / redo ------------------------------------------------------
+
+    def _snapshot(self) -> dict:
+        """Capture a snapshot of all undoable state."""
+        anns = []
+        for ann in self._annotations:
+            anns.append({
+                "shape": ann.shape,
+                "start_row": ann.start_row,
+                "start_col": ann.start_col,
+                "end_row": ann.end_row,
+                "end_col": ann.end_col,
+                "color": QColor(ann.color).name(),
+                "opacity": ann._opacity,
+                "text": getattr(ann, "text", ""),
+                "text_size": getattr(ann, "text_size", 28),
+                "wrap_coords": getattr(ann, "wrap_coords", False),
+                "bridge_down": getattr(ann, "bridge_down", False),
+            })
+        return {
+            "pieces": {(r, c): p.piece_type
+                       for (r, c), p in self._pieces.items()},
+            "annotations": anns,
+            "cell_textures": dict(self._cell_textures),
+        }
+
+    def _restore_snapshot(self, snap: dict):
+        """Restore state captured by ``_snapshot``."""
+        # Pieces
+        self.clear_all_pieces()
+        for (r, c), ptype in snap.get("pieces", {}).items():
+            self.place_piece(ptype, r, c)
+
+        # Annotations
+        for ann in self._annotations:
+            self.removeItem(ann)
+        self._annotations.clear()
+
+        sq = self.settings.square_size
+        extra_left, extra_bottom = self._get_coord_extras()
+        from PyQt6.QtCore import QPointF
+        for data in snap.get("annotations", []):
+            shape = data["shape"]
+            r1, c1 = data["start_row"], data["start_col"]
+            r2, c2 = data["end_row"], data["end_col"]
+            color = QColor(data["color"])
+            opacity = data["opacity"]
+            if shape in ("arrow", "bent_arrow", "u_arrow", "double_arrow"):
+                cell1 = self._cells[r1][c1]
+                cell2 = self._cells[r2][c2]
+                if not cell1 or not cell2:
+                    continue
+                sx = cell1.pos().x() + sq / 2
+                sy = cell1.pos().y() + sq / 2
+                ex = cell2.pos().x() + sq / 2 - sx
+                ey = cell2.pos().y() + sq / 2 - sy
+                ann = AnnotationItem(shape, color, opacity, sq,
+                                     end_point=QPointF(ex, ey))
+                if shape == "u_arrow":
+                    ann.bridge_down = data.get("bridge_down", r1 < 4)
+                ann.setPos(sx, sy)
+            elif shape == "highlight_row":
+                cell = self._cells[r1][0]
+                if not cell:
+                    continue
+                ann = AnnotationItem(shape, color, opacity, sq)
+                ann.wrap_coords = data.get("wrap_coords", False)
+                ann.coord_extra_left = extra_left
+                ann.setPos(cell.pos())
+            elif shape == "highlight_col":
+                cell = self._cells[0][c1]
+                if not cell:
+                    continue
+                ann = AnnotationItem(shape, color, opacity, sq)
+                ann.wrap_coords = data.get("wrap_coords", False)
+                ann.coord_extra_bottom = extra_bottom
+                ann.setPos(cell.pos())
+            else:
+                cell = self._cells[r1][c1]
+                if not cell:
+                    continue
+                ann = AnnotationItem(shape, color, opacity, sq)
+                if shape == "text":
+                    ann.text = data.get("text", "")
+                    ann.text_size = data.get("text_size", 28)
+                ann.setPos(cell.pos())
+            ann.start_row, ann.start_col = r1, c1
+            ann.end_row, ann.end_col = r2, c2
+            self.addItem(ann)
+            self._annotations.append(ann)
+
+        # Per-cell textures
+        new_textures = snap.get("cell_textures", {})
+        # Clear textures that are no longer present
+        for (r, c) in list(self._cell_textures.keys()):
+            if (r, c) not in new_textures:
+                cell = self._cells[r][c]
+                if cell:
+                    cell.clear_cell_texture()
+        self._cell_textures = dict(new_textures)
+        for (r, c), path in self._cell_textures.items():
+            cell = self._cells[r][c]
+            if cell:
+                pm = QPixmap(path)
+                if not pm.isNull():
+                    cell.set_cell_texture(pm)
+
+    def push_undo(self):
+        """Save current state on the undo stack."""
+        if self._undo_in_progress:
+            return
+        self._undo_stack.append(self._snapshot())
+        if len(self._undo_stack) > self._undo_limit:
+            self._undo_stack.pop(0)
+
+    def undo(self) -> bool:
+        """Pop the latest snapshot and restore it. Returns True if anything happened."""
+        if not self._undo_stack:
+            return False
+        snap = self._undo_stack.pop()
+        self._undo_in_progress = True
+        try:
+            self._restore_snapshot(snap)
+        finally:
+            self._undo_in_progress = False
+        return True
+
+    def can_undo(self) -> bool:
+        return bool(self._undo_stack)
+
     # ---- bounding rect (for export) ---------------------------------------
 
     def board_bounding_rect(self) -> QRectF:
@@ -466,6 +620,15 @@ class ChessBoardScene(QGraphicsScene):
 
         for item in self._coord_items:
             ir = item.sceneBoundingRect()
+            min_x = min(min_x, ir.left())
+            min_y = min(min_y, ir.top())
+            max_x = max(max_x, ir.right())
+            max_y = max(max_y, ir.bottom())
+
+        # Include annotation extents so wrapping highlights, arrows, and
+        # large text are not cropped during export.
+        for ann in self._annotations:
+            ir = ann.sceneBoundingRect()
             min_x = min(min_x, ir.left())
             min_y = min(min_y, ir.top())
             max_x = max(max_x, ir.right())
@@ -635,6 +798,8 @@ class ChessBoardScene(QGraphicsScene):
         self._rebuild_annotations()
 
     def clear_annotations(self):
+        if self._annotations:
+            self.push_undo()
         for ann in self._annotations:
             self.removeItem(ann)
         self._annotations.clear()
@@ -650,9 +815,13 @@ class ChessBoardScene(QGraphicsScene):
         if self._annotation_mode == "highlight_col":
             self._add_highlight_col(col)
             return
+        if self._annotation_mode == "cell_texture":
+            self._set_cell_texture_at(row, col)
+            return
         cell = self._cells[row][col]
         if not cell:
             return
+        self.push_undo()
         sq = self.settings.square_size
         ann = AnnotationItem(
             self._annotation_mode, self._annotation_color,
@@ -665,6 +834,32 @@ class ChessBoardScene(QGraphicsScene):
         self.addItem(ann)
         self._annotations.append(ann)
 
+    def _set_cell_texture_at(self, row: int, col: int):
+        """Prompt for an image file and apply it as a per-cell texture."""
+        from PyQt6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            None, f"Select Texture for {FILES[col]}{RANKS[row]}", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)")
+        if not path:
+            return
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            return
+        self.push_undo()
+        cell = self._cells[row][col]
+        if cell:
+            cell.set_cell_texture(pixmap)
+            self._cell_textures[(row, col)] = path
+
+    def _clear_cell_texture_at(self, row: int, col: int):
+        """Remove a per-cell texture, falling back to the shared texture/color."""
+        cell = self._cells[row][col]
+        if not cell or not cell.has_cell_texture():
+            return
+        self.push_undo()
+        cell.clear_cell_texture()
+        self._cell_textures.pop((row, col), None)
+
     def _add_text_at(self, row: int, col: int):
         """Prompt for text and add it to the given cell."""
         from PyQt6.QtWidgets import QInputDialog
@@ -675,6 +870,7 @@ class ChessBoardScene(QGraphicsScene):
         cell = self._cells[row][col]
         if not cell:
             return
+        self.push_undo()
         sq = self.settings.square_size
         ann = AnnotationItem(
             "text", self._annotation_color,
@@ -717,6 +913,7 @@ class ChessBoardScene(QGraphicsScene):
         cell = self._cells[row][0]
         if not cell:
             return
+        self.push_undo()
         sq = self.settings.square_size
         extra_left, extra_bottom = self._get_coord_extras()
         ann = AnnotationItem(
@@ -737,6 +934,7 @@ class ChessBoardScene(QGraphicsScene):
         cell = self._cells[0][col]
         if not cell:
             return
+        self.push_undo()
         sq = self.settings.square_size
         extra_left, extra_bottom = self._get_coord_extras()
         ann = AnnotationItem(
@@ -758,6 +956,7 @@ class ChessBoardScene(QGraphicsScene):
         cell2 = self._cells[r2][c2]
         if not cell1 or not cell2:
             return
+        self.push_undo()
         sq = self.settings.square_size
         # Arrow starts from center of source cell
         sx = cell1.pos().x() + sq / 2
@@ -778,12 +977,39 @@ class ChessBoardScene(QGraphicsScene):
         self.addItem(ann)
         self._annotations.append(ann)
 
+    def _add_double_arrow(self, r1, c1, r2, c2):
+        """Add a double-headed arrow between two cells."""
+        cell1 = self._cells[r1][c1]
+        cell2 = self._cells[r2][c2]
+        if not cell1 or not cell2:
+            return
+        self.push_undo()
+        sq = self.settings.square_size
+        sx = cell1.pos().x() + sq / 2
+        sy = cell1.pos().y() + sq / 2
+        ex = cell2.pos().x() + sq / 2 - sx
+        ey = cell2.pos().y() + sq / 2 - sy
+
+        from PyQt6.QtCore import QPointF
+        ann = AnnotationItem(
+            "double_arrow", self._annotation_color,
+            self._annotation_opacity, sq,
+            end_point=QPointF(ex, ey))
+        ann.start_row = r1
+        ann.start_col = c1
+        ann.end_row = r2
+        ann.end_col = c2
+        ann.setPos(sx, sy)
+        self.addItem(ann)
+        self._annotations.append(ann)
+
     def _add_bent_arrow(self, r1, c1, r2, c2):
         """Add a bent (L-shaped) arrow from cell (r1,c1) to cell (r2,c2)."""
         cell1 = self._cells[r1][c1]
         cell2 = self._cells[r2][c2]
         if not cell1 or not cell2:
             return
+        self.push_undo()
         sq = self.settings.square_size
         sx = cell1.pos().x() + sq / 2
         sy = cell1.pos().y() + sq / 2
@@ -809,6 +1035,7 @@ class ChessBoardScene(QGraphicsScene):
         cell2 = self._cells[r2][c2]
         if not cell1 or not cell2:
             return
+        self.push_undo()
         sq = self.settings.square_size
         sx = cell1.pos().x() + sq / 2
         sy = cell1.pos().y() + sq / 2
@@ -845,7 +1072,7 @@ class ChessBoardScene(QGraphicsScene):
         sq = self.settings.square_size
         extra_left, extra_bottom = self._get_coord_extras()
         for shape, r1, c1, r2, c2, color, opacity, text, text_size, wrap_coords in saved:
-            if shape in ("arrow", "bent_arrow", "u_arrow"):
+            if shape in ("arrow", "bent_arrow", "u_arrow", "double_arrow"):
                 cell1 = self._cells[r1][c1]
                 cell2 = self._cells[r2][c2]
                 if not cell1 or not cell2:
@@ -917,6 +1144,7 @@ class ChessBoardScene(QGraphicsScene):
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
             if row is not None:
+                self.push_undo()
                 self.place_piece(piece_type, row, col)
             event.acceptProposedAction()
         else:
@@ -927,20 +1155,30 @@ class ChessBoardScene(QGraphicsScene):
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
             if row is not None:
+                if self._annotation_mode == "cell_texture":
+                    # Right-click clears per-cell texture
+                    self._clear_cell_texture_at(row, col)
+                    return
                 if self._annotation_mode:
                     # Remove any annotation at this cell
+                    removed = False
                     for ann in list(self._annotations):
                         if ann.start_row == row and ann.start_col == col:
+                            if not removed:
+                                self.push_undo()
+                                removed = True
                             self.removeItem(ann)
                             self._annotations.remove(ann)
                     return
+                if (row, col) in self._pieces:
+                    self.push_undo()
                 self.remove_piece(row, col)
                 return
         if event.button() == Qt.MouseButton.LeftButton and self._annotation_mode:
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
             if row is not None:
-                if self._annotation_mode in ("arrow", "bent_arrow", "u_arrow"):
+                if self._annotation_mode in ("arrow", "bent_arrow", "u_arrow", "double_arrow"):
                     self._arrow_start_pos = pos
                     self._arrow_start_rc = (row, col)
                 else:
@@ -950,7 +1188,7 @@ class ChessBoardScene(QGraphicsScene):
 
     def mouseReleaseEvent(self, event):
         if (event.button() == Qt.MouseButton.LeftButton
-                and self._annotation_mode in ("arrow", "bent_arrow", "u_arrow")
+                and self._annotation_mode in ("arrow", "bent_arrow", "u_arrow", "double_arrow")
                 and self._arrow_start_rc is not None):
             pos = event.scenePos()
             row, col = self._pos_to_square(pos)
@@ -960,6 +1198,8 @@ class ChessBoardScene(QGraphicsScene):
                     self._add_bent_arrow(r1, c1, row, col)
                 elif self._annotation_mode == "u_arrow":
                     self._add_u_arrow(r1, c1, row, col)
+                elif self._annotation_mode == "double_arrow":
+                    self._add_double_arrow(r1, c1, row, col)
                 else:
                     self._add_arrow(r1, c1, row, col)
             self._arrow_start_pos = None

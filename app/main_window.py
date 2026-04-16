@@ -108,6 +108,11 @@ class MainWindow(QMainWindow):
         sp.annotationWrapCoordsChanged.connect(self.scene.set_annotation_wrap_coords)
 
     def _create_actions(self):
+        self._undo_action = QAction("Undo", self)
+        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self._undo_action.setToolTip("Undo last action (Ctrl+Z)")
+        self._undo_action.triggered.connect(self._on_undo)
+
         self._start_action = QAction("Start Position", self)
         self._start_action.setShortcut(QKeySequence("F5"))
         self._start_action.setToolTip("Set standard starting position (F5)")
@@ -157,6 +162,8 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
+        toolbar.addAction(self._undo_action)
+        toolbar.addSeparator()
         toolbar.addAction(self._start_action)
         toolbar.addAction(self._clear_action)
         toolbar.addSeparator()
@@ -182,6 +189,8 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self._quit_action)
 
         edit_menu = menubar.addMenu("Edit")
+        edit_menu.addAction(self._undo_action)
+        edit_menu.addSeparator()
         edit_menu.addAction(self._start_action)
         edit_menu.addAction(self._clear_action)
 
@@ -198,6 +207,12 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
 
     # ---- actions ----------------------------------------------------------
+
+    def _on_undo(self):
+        if self.scene.undo():
+            self.statusBar().showMessage("Undo")
+        else:
+            self.statusBar().showMessage("Nothing to undo")
 
     def _on_start_position(self):
         self.scene.set_starting_position()

@@ -2,7 +2,10 @@
 
 import math
 from PyQt6.QtWidgets import QGraphicsItem
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QPolygonF, QFont
+from PyQt6.QtGui import (
+    QPainter, QColor, QPen, QBrush, QPainterPath, QPolygonF, QFont,
+    QFontMetricsF,
+)
 from PyQt6.QtCore import Qt, QRectF, QPointF
 
 
@@ -39,7 +42,7 @@ class AnnotationItem(QGraphicsItem):
         self.setZValue(10)  # above pieces
 
     def boundingRect(self) -> QRectF:
-        if self.shape in ("arrow", "bent_arrow"):
+        if self.shape in ("arrow", "bent_arrow", "double_arrow"):
             pad = self.cell_size * 0.35
             x1, y1 = 0, 0
             x2, y2 = self.end_point.x(), self.end_point.y()
@@ -70,9 +73,29 @@ class AnnotationItem(QGraphicsItem):
             extra_bottom = self.coord_extra_bottom if self.wrap_coords else 0
             return QRectF(-pad, -pad,
                           s + 2 * pad, h + extra_bottom + 2 * pad)
+        if self.shape == "text":
+            return self._text_bounding_rect()
         pad = 4
         s = self.cell_size
         return QRectF(-pad, -pad, s + 2 * pad, s + 2 * pad)
+
+    def _text_bounding_rect(self) -> QRectF:
+        """Bounding rect for text annotation, expanded if text overflows cell."""
+        s = self.cell_size
+        pad = 4
+        if not self.text:
+            return QRectF(-pad, -pad, s + 2 * pad, s + 2 * pad)
+        font = QFont("Arial", max(8, int(self.text_size)))
+        font.setBold(True)
+        fm = QFontMetricsF(font)
+        tw = fm.horizontalAdvance(self.text)
+        th = fm.height()
+        # Text is centered in the cell — expand bounds to cover overflow.
+        w = max(s, tw)
+        h = max(s, th)
+        x = (s - w) / 2.0
+        y = (s - h) / 2.0
+        return QRectF(x - pad, y - pad, w + 2 * pad, h + 2 * pad)
 
     def paint(self, painter: QPainter, option, widget=None):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -81,6 +104,8 @@ class AnnotationItem(QGraphicsItem):
 
         if self.shape == "arrow":
             self._paint_arrow(painter, c)
+        elif self.shape == "double_arrow":
+            self._paint_double_arrow(painter, c)
         elif self.shape == "bent_arrow":
             self._paint_bent_arrow(painter, c)
         elif self.shape == "u_arrow":
@@ -134,6 +159,47 @@ class AnnotationItem(QGraphicsItem):
         painter.setPen(QPen(Qt.PenStyle.NoPen))
         painter.setBrush(QBrush(color))
         painter.drawPolygon(poly)
+
+    def _paint_double_arrow(self, painter: QPainter, color: QColor):
+        """Draw a straight arrow with arrowheads at BOTH ends."""
+        ex, ey = self.end_point.x(), self.end_point.y()
+        length = math.hypot(ex, ey)
+        if length < 1:
+            return
+
+        shaft_w = self.cell_size * 0.12
+        head_len = self.cell_size * 0.35
+        head_w = self.cell_size * 0.3
+
+        # If the line is too short to fit two arrowheads, shrink them.
+        if length < 2 * head_len + shaft_w:
+            head_len = max(0.0, (length - shaft_w) / 2.0)
+
+        angle = math.atan2(ey, ex)
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+
+        def rot(x, y):
+            return QPointF(x * cos_a - y * sin_a, x * sin_a + y * cos_a)
+
+        hw = shaft_w / 2
+        # Arrowhead at the start (length=0) and the end (length=length).
+        # Build polygon clockwise starting at the start tip.
+        points = [
+            rot(0, 0),                      # start tip
+            rot(head_len, -head_w),         # start head outer top
+            rot(head_len, -hw),             # start head shoulder top
+            rot(length - head_len, -hw),    # end head shoulder top
+            rot(length - head_len, -head_w),  # end head outer top
+            rot(length, 0),                 # end tip
+            rot(length - head_len, head_w), # end head outer bottom
+            rot(length - head_len, hw),     # end head shoulder bottom
+            rot(head_len, hw),              # start head shoulder bottom
+            rot(head_len, head_w),          # start head outer bottom
+        ]
+
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        painter.setBrush(QBrush(color))
+        painter.drawPolygon(QPolygonF(points))
 
     def _paint_bent_arrow(self, painter: QPainter, color: QColor):
         """Draw an L-shaped arrow: longer axis first, shorter with arrowhead."""
@@ -250,12 +316,15 @@ class AnnotationItem(QGraphicsItem):
         if not self.text:
             return
         s = self.cell_size
-        font = QFont("Arial", max(8, self.text_size))
+        font = QFont("Arial", max(8, int(self.text_size)))
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(QPen(color))
-        painter.drawText(QRectF(0, 0, s, s),
-                         Qt.AlignmentFlag.AlignCenter, self.text)
+        # Use TextDontClip so large text isn't cropped by the cell rect.
+        flags = (Qt.AlignmentFlag.AlignCenter
+                 | Qt.TextFlag.TextDontClip
+                 | Qt.TextFlag.TextSingleLine)
+        painter.drawText(QRectF(0, 0, s, s), int(flags), self.text)
 
     def _paint_highlight_row(self, painter: QPainter, color: QColor):
         s = self.cell_size

@@ -287,9 +287,11 @@ class SettingsPanel(QWidget):
         ann_layout = QFormLayout()
 
         self.ann_mode_combo = QComboBox()
-        self.ann_mode_combo.addItems(["Off", "Arrow", "Bent Arrow", "Castling Arrow",
+        self.ann_mode_combo.addItems(["Off", "Arrow", "Double Arrow",
+                                          "Bent Arrow", "Castling Arrow",
                                           "Circle", "X", "Square", "Text",
-                                          "Highlight Row", "Highlight Column"])
+                                          "Highlight Row", "Highlight Column",
+                                          "Cell Texture"])
         self.ann_mode_combo.currentTextChanged.connect(self._on_ann_mode)
         ann_layout.addRow("Draw:", self.ann_mode_combo)
 
@@ -341,12 +343,15 @@ class SettingsPanel(QWidget):
         self.pieceScaleChanged.emit(value / 100.0)
 
     def _on_ann_mode(self, text):
-        mode_map = {"Off": "", "Arrow": "arrow", "Bent Arrow": "bent_arrow",
+        mode_map = {"Off": "", "Arrow": "arrow",
+                    "Double Arrow": "double_arrow",
+                    "Bent Arrow": "bent_arrow",
                     "Castling Arrow": "u_arrow",
                     "Circle": "circle", "X": "x", "Square": "square",
                     "Text": "text",
                     "Highlight Row": "highlight_row",
-                    "Highlight Column": "highlight_col"}
+                    "Highlight Column": "highlight_col",
+                    "Cell Texture": "cell_texture"}
         self.annotationModeChanged.emit(mode_map.get(text, ""))
 
     def _on_ann_opacity(self, value):

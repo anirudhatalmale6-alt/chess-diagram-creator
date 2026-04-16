@@ -16,6 +16,7 @@ class CellItem(QGraphicsRectItem):
         # Use explicit RGB to avoid hex parsing issues on some platforms
         self._base_color = QColor(240, 217, 181) if is_light else QColor(181, 136, 99)
         self._texture_pixmap = None
+        self._cell_texture_pixmap = None  # Per-cell override texture
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self._update_brush()
 
@@ -33,6 +34,18 @@ class CellItem(QGraphicsRectItem):
         self._update_brush()
         self.update()
 
+    def set_cell_texture(self, pixmap: QPixmap):
+        """Set a per-cell texture (overrides shared light/dark texture)."""
+        self._cell_texture_pixmap = pixmap
+        self.update()
+
+    def clear_cell_texture(self):
+        self._cell_texture_pixmap = None
+        self.update()
+
+    def has_cell_texture(self) -> bool:
+        return self._cell_texture_pixmap is not None
+
     def set_size(self, size: float):
         self.setRect(0, 0, size, size)
         self.update()
@@ -41,11 +54,13 @@ class CellItem(QGraphicsRectItem):
         self.setBrush(QBrush(self._base_color))
 
     def paint(self, painter: QPainter, option, widget=None):
-        if self._texture_pixmap:
+        # Per-cell texture takes priority over the shared light/dark texture.
+        active = self._cell_texture_pixmap or self._texture_pixmap
+        if active:
             rect = self.rect()
             painter.drawPixmap(
                 rect.toRect(),
-                self._texture_pixmap.scaled(
+                active.scaled(
                     int(rect.width()), int(rect.height()),
                     Qt.AspectRatioMode.IgnoreAspectRatio,
                     Qt.TransformationMode.SmoothTransformation

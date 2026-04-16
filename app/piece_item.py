@@ -275,6 +275,11 @@ class ChessPieceItem(QGraphicsItem):
 
     def mousePressEvent(self, event):
         self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
+        # Snapshot before user starts dragging this piece so the move can
+        # be undone.
+        scene = self.scene()
+        if scene and hasattr(scene, "push_undo"):
+            scene.push_undo()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
